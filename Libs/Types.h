@@ -5,3 +5,8 @@ struct filenameType {
     int category = -1; // 0: color, 1: depth, 2: pose
     std::string name = ""; // fullname
 };
+
+struct detectResult{
+    std::vector<KeyPoint> keypoints;
+    Mat descriptors;
+};

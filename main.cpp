@@ -14,12 +14,15 @@
 #include <opencv2/core/hal/interface.h>
 #include "opencv2/features2d.hpp"
 #include "opencv2/xfeatures2d.hpp"
+#include <opencv2/calib3d.hpp>
 
 #include "Libs/Eigen.h"
 #include "Libs/VirtualSensor.h"
 #include "Libs/Types.h"
 
-#define METHOD "harris"
+#define DESCRIPTOR_METHOD "sift" // harris, sift, surf, orb, brisk, kaze, akaze
+#define DESCRIPTOR_MATCHING_METHOD "flann" // flann, brute_force
+#define FUNDAMENTAL_MATRIX_METHOD "ransac" // ransac, lmeds, 7point, 8point
 
 using namespace cv;
 using namespace cv::xfeatures2d;
@@ -28,7 +31,8 @@ void detect_keypoints_or_features(Mat);
 struct filenameType extract_file_name(std::string);
 std::string get_file_name(int, int);
 void process_pair_images(std::string, std::string, std::string);
-std::vector<KeyPoint> detect_keypoints_or_features(std::string, std::string, Mat);
+struct detectResult detect_keypoints_or_features(std::string, std::string, Mat);
+std::vector<DMatch> match_descriptors(Mat, Mat);
 
 struct filenameType extract_file_name(std::string filename){
     filenameType type;
@@ -46,6 +50,8 @@ struct filenameType extract_file_name(std::string filename){
 }
 
 std::string get_file_name(int number, int category){
+    if(number >= 772)
+        number = 770;
     std::string number_string = std::to_string(number);
     if(number < 10)
         number_string = "00" + number_string;
@@ -58,25 +64,104 @@ std::string get_file_name(int number, int category){
         filename += "depth.png";
     else if(category == 2)
         filename += "pose.txt";
-    else
-        filename = "";
     return filename;
 }
 
 void process_pair_images(std::string dataset_dir, std::string filename1, std::string filename2){
     Mat img1 = imread(dataset_dir + filename1, IMREAD_COLOR);
     Mat img2 = imread(dataset_dir + filename2, IMREAD_COLOR);
+    // TODO: calibrate image distortion if needed
     if(img1.empty() || img2.empty()){
         std::cout << "Error: Image not found or failed to open image." << std::endl;
         return;
     }
-    detect_keypoints_or_features(dataset_dir, filename1, img1);
-    detect_keypoints_or_features(dataset_dir, filename1, img2);
-    // correspondence_match();
+    struct detectResult result1 = detect_keypoints_or_features(dataset_dir, filename1, img1);
+    struct detectResult result2 = eypoints_or_features(dataset_dir, filename1, img2);
+    std::vector<DMatch> correspondences = match_descriptors(descriptors1, descriptors2);
+    Mat fundamental_matrix = find_fundamental_matrix(result1.keypoints, result2.keypoints, correspondences);
+    rectify_images(img1, img2, result1.keypoints, result2.keypoints, correspondences, fundamental_matrix);
+    // use rectified images to do stereo matching
+    // https://docs.opencv.org/3.4/d2/d6e/classcv_1_1StereoMatcher.html#a03f7087df1b2c618462eb98898841345
 }
 
-std::vector<KeyPoint> detect_keypoints_or_features(std::string dataset_dir, std::string img_name, Mat img){
-    if(METHOD == "harris") {
+void rectify_images(Mat img1, Mat img2, std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences, Mat fundamental_matrix){
+    std::vector<Point2f> points1, points2;
+    for(int i = 0; i < correspondences.size(); i++){
+        points1.push_back(keypoints1[correspondences[i].queryIdx].pt);
+        points2.push_back(keypoints2[correspondences[i].trainIdx].pt);   
+    }
+    if(points1.size() != points2.size() || points1.size() < 8){
+        std::cout << "Error: The number of points is not enough." << std::endl;
+        return Mat();
+    }
+    Mat homography1, homography2;
+    double threshold = 5.0;
+    if(!stereoRectifyUncalibrated(points1, points2, fundamental_matrix, img1.size(), homography1, homography2, threshold)){
+        std::cout << "Error: Failed to rectify images." << std::endl;
+        return;
+    }
+    Mat rectified1, rectified2;
+    // TODO: rectify images
+}
+
+Mat find_fundamental_matrix(std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences){
+    std::vector<Point2f> points1, points2;
+    for(int i = 0; i < correspondences.size(); i++){
+        points1.push_back(keypoints1[correspondences[i].queryIdx].pt);
+        points2.push_back(keypoints2[correspondences[i].trainIdx].pt);   
+    }
+    if(points1.size() != points2.size() || points1.size() < 8){
+        std::cout << "Error: The number of points is not enough." << std::endl;
+        return Mat();
+    }
+    Mat fundamental_matrix;
+    double ransacReprojThreshold = 3.0, confidence = 0.99;
+    if(FUNDAMENTAL_MATRIX_METHOD == "ransac")
+        fundamental_matrix = findFundamentalMat(points1, points2, CV_FM_RANSAC, ransacReprojThreshold, confidence);
+    else if(FUNDAMENTAL_MATRIX_METHOD == "lmeds")
+        fundamental_matrix = findFundamentalMat(points1, points2, CV_FM_LMEDS, ransacReprojThreshold, confidence);
+    else if(FUNDAMENTAL_MATRIX_METHOD == "7point")
+        fundamental_matrix = findFundamentalMat(points1, points2, CV_FM_7POINT);
+    else if(FUNDAMENTAL_MATRIX_METHOD == "8point")
+        fundamental_matrix = findFundamentalMat(points1, points2, CV_FM_8POINT);
+    else{
+        std::cout << "Error: No such fundamental matrix method." << std::endl;
+        return Mat();
+    }
+    return fundamental_matrix;
+}
+
+std::vector<DMatch> match_descriptors(Mat descriptors1, Mat descriptors2){
+    std::vector<std::vector<DMatch>> correspondences;
+    if(DESCRITPOR_MATCHING_METHOD == "flann"){
+        Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);
+        // the knn use NORM_L2 because sift is a float-pointing descriptor
+        // descriptor1 = queryDescriptor, descriptor2 = trainDescriptor
+        matcher->knnMatch(descriptors1, descriptors2, correspondences, 2);
+    }
+    else if(DESCRIPTOR_MATCHING_METHOD == "brute_force"){
+        Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::BRUTEFORCE);
+        // the knn use NORM_L2 because sift is a float-pointing descriptor
+        matcher->knnMatch(descriptors1, descriptors2, correspondences, 2);
+    }
+    else{
+        std::cout << "Error: No such matching method." << std::endl;
+        return correspondences;
+    }
+    const float ratio_thresh = 0.7f;
+    std::vector<DMatch> good_matches;
+    for (size_t i = 0; i < correspondences.size(); i++){
+        if (correspondences[i][0].distance < ratio_thresh * correspondences[i][1].distance)
+            good_matches.push_back(correspondences[i][0]);
+    }
+    Mat img_matches;
+    drawMatches(img1, keypoints1, img2, keypoints2, good_matches, img_matches, Scalar::all(-1), Scalar::all(-1), std::vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
+    imwrite("/Users/k/Desktop/courses/3dscanning/3DScanning/descriptor_match/", img_matches);
+    return good_matches;
+}
+
+struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::string img_name, Mat img){
+    if(DESCRIPTOR_METHOD == "harris") {
         int blocksize = 2, aperture_size = 3, thresh = 200;
         double k = 0.04;
         Mat img_gray, distance_norm, distance_norm_scaled;
@@ -102,12 +187,13 @@ std::vector<KeyPoint> detect_keypoints_or_features(std::string dataset_dir, std:
         // imwrite("/Users/k/Desktop/courses/3dscanning/3DScanning/harris_corner_keypoints/" + img_name, keypoints_on_image);
         // imwrite("/Users/k/Desktop/courses/3dscanning/3DScanning/harris_corner/" + img_name, distance_norm_scaled);
         // imwrite("/Users/k/Desktop/courses/3dscanning/3DScanning/harris_corner_unlabeled/" + img_name, distance_norm);
-        // TODO: extract keypoints from distance_norm_scaled
         // https://docs.opencv.org/3.4/d4/d7d/tutorial_harris_detector.html
-        // return distance_norm_scaled;
-        return keypoints;
+        struct detectResult result;
+        result.keypoints = keypoints;
+        result.descriptors = distance_norm_scaled; // TODO: how to get descriptors?
+        return result;
     }
-    else if(METHOD == "sift") {
+    else if(DESCRIPTOR_METHOD == "sift") {
         // std::cout << "detecting sift keypoints and descriptors" << std::endl;
         int nfeatures = 0, nOctaveLayers = 3;
         double contrastThreshold = 0.04, edgeThreshold = 10, sigma = 1.6;
@@ -115,13 +201,14 @@ std::vector<KeyPoint> detect_keypoints_or_features(std::string dataset_dir, std:
         std::vector<KeyPoint> keypoints;
         Mat descriptors;
         sift_detector->detectAndCompute(img, Mat(), keypoints, descriptors);
-        // std::cout << keypoints[0].size << std::endl;
-        // TODO: what should be returned? keypoints or descriptors or both?
         // Mat keypoints_on_image;
         // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
         // imwrite("/Users/k/Desktop/courses/3dscanning/3DScanning/sift/" + img_name, keypoints_on_image);
         // https://docs.opencv.org/3.4/d7/d66/tutorial_feature_detection.html 
-        return keypoints;
+        struct detectResult result;
+        result.keypoints = keypoints;
+        result.descriptors = descriptors;
+        return result;
     }
 }
 
