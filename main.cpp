@@ -32,8 +32,11 @@ struct filenameType extract_file_name(std::string);
 std::string get_file_name(int, int);
 void process_pair_images(std::string, std::string, std::string);
 struct detectResult detect_keypoints_or_features(std::string, std::string, Mat);
-std::vector<DMatch> match_descriptors(Mat, Mat);
+std::vector<DMatch> match_descriptors(Mat, Mat, struct detectResult, struct detectResult);
+Mat find_fundamental_matrix(std::vector<KeyPoint>, std::vector<KeyPoint>, std::vector<DMatch>);
+void rectify_images(Mat, Mat, std::vector<KeyPoint>, std::vector<KeyPoint>, std::vector<DMatch>, Mat);
 
+// TESTED
 struct filenameType extract_file_name(std::string filename){
     filenameType type;
     type.name = filename;
@@ -49,6 +52,7 @@ struct filenameType extract_file_name(std::string filename){
     return type;
 }
 
+// TESTED
 std::string get_file_name(int number, int category){
     if(number >= 772)
         number = 770;
@@ -75,13 +79,21 @@ void process_pair_images(std::string dataset_dir, std::string filename1, std::st
         std::cout << "Error: Image not found or failed to open image." << std::endl;
         return;
     }
+    // std::cout << "detecting keypoints and features for image " << filename1 << " and " << filename2 << std::endl;
     struct detectResult result1 = detect_keypoints_or_features(dataset_dir, filename1, img1);
-    struct detectResult result2 = eypoints_or_features(dataset_dir, filename1, img2);
-    std::vector<DMatch> correspondences = match_descriptors(descriptors1, descriptors2);
+    struct detectResult result2 = detect_keypoints_or_features(dataset_dir, filename2, img2);
+    std::cout << "Processing " << filename1 << " and " << filename2 << std::endl;
+    std::cout << "Matching descriptors for image " << std::endl;
+    std::vector<DMatch> correspondences = match_descriptors(img1, img2, result1, result2);
+    std::cout << "Finding fundamental matrix for image " << std::endl;
     Mat fundamental_matrix = find_fundamental_matrix(result1.keypoints, result2.keypoints, correspondences);
+    // std::cout << fundamental_matrix << std::endl;
+    std::cout << "Rectifying images for image " << std::endl;
     rectify_images(img1, img2, result1.keypoints, result2.keypoints, correspondences, fundamental_matrix);
     // use rectified images to do stereo matching
     // https://docs.opencv.org/3.4/d2/d6e/classcv_1_1StereoMatcher.html#a03f7087df1b2c618462eb98898841345
+    std::cout << "Finished processing " << filename1 << " and " << filename2 << std::endl;
+    return;
 }
 
 void rectify_images(Mat img1, Mat img2, std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences, Mat fundamental_matrix){
@@ -92,16 +104,20 @@ void rectify_images(Mat img1, Mat img2, std::vector<KeyPoint> keypoints1, std::v
     }
     if(points1.size() != points2.size() || points1.size() < 8){
         std::cout << "Error: The number of points is not enough." << std::endl;
-        return Mat();
+        return;
     }
     Mat homography1, homography2;
     double threshold = 5.0;
+    // TODO: the following function doesn't require intrinsic paramters, but we have intrinsic parameters to be used
     if(!stereoRectifyUncalibrated(points1, points2, fundamental_matrix, img1.size(), homography1, homography2, threshold)){
         std::cout << "Error: Failed to rectify images." << std::endl;
         return;
     }
     Mat rectified1, rectified2;
     // TODO: rectify images
+    warpPerspective(img1, rectified1, homography1, img1.size());
+    warpPerspective(img2, rectified2, homography2, img2.size());
+    return;
 }
 
 Mat find_fundamental_matrix(std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences){
@@ -117,13 +133,13 @@ Mat find_fundamental_matrix(std::vector<KeyPoint> keypoints1, std::vector<KeyPoi
     Mat fundamental_matrix;
     double ransacReprojThreshold = 3.0, confidence = 0.99;
     if(FUNDAMENTAL_MATRIX_METHOD == "ransac")
-        fundamental_matrix = findFundamentalMat(points1, points2, CV_FM_RANSAC, ransacReprojThreshold, confidence);
+        fundamental_matrix = findFundamentalMat(points1, points2, FM_RANSAC, ransacReprojThreshold, confidence);
     else if(FUNDAMENTAL_MATRIX_METHOD == "lmeds")
-        fundamental_matrix = findFundamentalMat(points1, points2, CV_FM_LMEDS, ransacReprojThreshold, confidence);
+        fundamental_matrix = findFundamentalMat(points1, points2, FM_LMEDS, ransacReprojThreshold, confidence);
     else if(FUNDAMENTAL_MATRIX_METHOD == "7point")
-        fundamental_matrix = findFundamentalMat(points1, points2, CV_FM_7POINT);
+        fundamental_matrix = findFundamentalMat(points1, points2, FM_7POINT);
     else if(FUNDAMENTAL_MATRIX_METHOD == "8point")
-        fundamental_matrix = findFundamentalMat(points1, points2, CV_FM_8POINT);
+        fundamental_matrix = findFundamentalMat(points1, points2, FM_8POINT);
     else{
         std::cout << "Error: No such fundamental matrix method." << std::endl;
         return Mat();
@@ -131,9 +147,11 @@ Mat find_fundamental_matrix(std::vector<KeyPoint> keypoints1, std::vector<KeyPoi
     return fundamental_matrix;
 }
 
-std::vector<DMatch> match_descriptors(Mat descriptors1, Mat descriptors2){
+std::vector<DMatch> match_descriptors(Mat img1, Mat img2, struct detectResult result1, struct detectResult result2){
+    Mat descriptors1 = result1.descriptors, descriptors2 = result2.descriptors;
+    std::vector<KeyPoint> keypoints1 = result1.keypoints, keypoints2 = result2.keypoints;
     std::vector<std::vector<DMatch>> correspondences;
-    if(DESCRITPOR_MATCHING_METHOD == "flann"){
+    if(DESCRIPTOR_MATCHING_METHOD == "flann"){
         Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);
         // the knn use NORM_L2 because sift is a float-pointing descriptor
         // descriptor1 = queryDescriptor, descriptor2 = trainDescriptor
@@ -146,7 +164,7 @@ std::vector<DMatch> match_descriptors(Mat descriptors1, Mat descriptors2){
     }
     else{
         std::cout << "Error: No such matching method." << std::endl;
-        return correspondences;
+        exit(-1);
     }
     const float ratio_thresh = 0.7f;
     std::vector<DMatch> good_matches;
@@ -156,10 +174,11 @@ std::vector<DMatch> match_descriptors(Mat descriptors1, Mat descriptors2){
     }
     Mat img_matches;
     drawMatches(img1, keypoints1, img2, keypoints2, good_matches, img_matches, Scalar::all(-1), Scalar::all(-1), std::vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
-    imwrite("/Users/k/Desktop/courses/3dscanning/3DScanning/descriptor_match/", img_matches);
+    imwrite("/Users/k/Desktop/courses/3dscanning/3DScanning/descriptor_match/" + std::to_string(result1.filetype.number) + "-" + std::to_string(result2.filetype.number) + ".png", img_matches);
     return good_matches;
 }
 
+// TESTED
 struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::string img_name, Mat img){
     if(DESCRIPTOR_METHOD == "harris") {
         int blocksize = 2, aperture_size = 3, thresh = 200;
@@ -191,6 +210,7 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
         struct detectResult result;
         result.keypoints = keypoints;
         result.descriptors = distance_norm_scaled; // TODO: how to get descriptors?
+        result.filetype = extract_file_name(img_name);
         return result;
     }
     else if(DESCRIPTOR_METHOD == "sift") {
@@ -208,10 +228,12 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
         struct detectResult result;
         result.keypoints = keypoints;
         result.descriptors = descriptors;
+        result.filetype = extract_file_name(img_name);
         return result;
     }
 }
 
+// TESTED
 int main()
 {
     std::string dataset_dir = "/Users/k/Desktop/courses/3dscanning/3DScanning/bricks-rgbd/";

@@ -7,6 +7,7 @@ struct filenameType {
 };
 
 struct detectResult{
-    std::vector<KeyPoint> keypoints;
-    Mat descriptors;
+    std::vector<cv::KeyPoint> keypoints;
+    cv::Mat descriptors;
+    struct filenameType filetype;
 };
