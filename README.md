@@ -7,6 +7,6 @@ You want to merge the 3D output of multiple stereo reconstructions into a joint 
 Please specify more concretely which “matching cost computation methods, cost (support) aggregation methods and disparity computation/optimization methods” you plan to compare. I encourage you to update the milestones accordingly, e.g. you condensed 3 weeks into one high-level bullet-point.
 While you do not need to implement everything yourself (e.g. sparse keypoint detection/matching can be taken from OpenCV), please note that the whole project should not be implemented by simply calling OpenCV functions for everything. For instance, you could implement the dense matching yourself, since you also want to compare different implementations in your final report.
 Typically, people start with calibrated cameras as input in their datasets to simplify the pre-processing. I think your datasets offer intrinsics already, so I suggest you use them, instead of calibrating the cameras yourself.
-## Momo
+## Questions
 - opencv only provides feature matcher, which use feature descriptors as input. There is no keypoint matcher in opencv. But harris keypoint matcher produce keypoints and harris corner responses. 
 - Why the matching result of feature matcher contains the index of keypoints

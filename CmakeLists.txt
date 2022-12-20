@@ -5,10 +5,10 @@ set(CMAKE_CXX_STANDARD 14)
 
 # require some packages, include the directory of the package
 find_package(OpenCV REQUIRED)
-find_package(Eigen3 REQUIRED)
+#find_package(Eigen3 REQUIRED)
 include_directories("/opt/homebrew/Cellar/opencv/4.6.0_1/include/opencv4")
-include_directories("/opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3")
+#include_directories("/opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3")
 
 add_executable(StereoReconstruction main.cpp)
 target_link_libraries(StereoReconstruction ${OpenCV_LIBS})
-target_link_libraries(StereoReconstruction ${Eigen3_LIBS})
+#target_link_libraries(StereoReconstruction ${Eigen3_LIBS})
