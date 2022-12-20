@@ -5,7 +5,6 @@ project(StereoReconstruction)
 # Options
 set(LIBRARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../Libs CACHE PATH "Path to lib folder")
 set(Eigen3_DIR ${LIBRARY_DIR}/Eigen/share/eigen3/cmake CACHE PATH "Path to installed Eigen")
-set(OpenCV_DIR E:/Programs/vcpkg/installed/x64-windows/share/opencv CACHE PATH "Path to installed Eigen")
 
 # Set C++ flags
 set(CMAKE_CXX_STANDARD 14)
@@ -18,8 +17,6 @@ find_package(OpenCV REQUIRED)
 set(HEADER_FILES 
     Eigen.h
 )
-
-message(STATUS "Libs: ${OpenCV_LIBS}")
 
 add_executable(StereoReconstruction main.cpp ${HEADER_FILES})
 target_include_directories(StereoReconstruction PUBLIC ${EIGEN3_INCLUDE_DIR} ${OpenCV_INCLUDE_DIRS})
