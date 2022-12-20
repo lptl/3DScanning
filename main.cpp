@@ -20,8 +20,8 @@
 #include "Libs/VirtualSensor.h"
 #include "Libs/Types.h"
 
-#define DESCRIPTOR_METHOD "sift" // harris, sift, surf, orb, brisk, kaze, akaze
-#define DESCRIPTOR_MATCHING_METHOD "flann" // flann, brute_force
+#define DESCRIPTOR_METHOD "harris" // harris, sift, surf, orb, brisk, kaze, akaze
+#define DESCRIPTOR_MATCHING_METHOD "brute_force" // flann, brute_force
 #define FUNDAMENTAL_MATRIX_METHOD "ransac" // ransac, lmeds, 7point, 8point
 
 using namespace cv;
@@ -155,6 +155,7 @@ std::vector<DMatch> match_descriptors(Mat img1, Mat img2, struct detectResult re
         Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);
         // the knn use NORM_L2 because sift is a float-pointing descriptor
         // descriptor1 = queryDescriptor, descriptor2 = trainDescriptor
+        std::cout << "peforming flann based matching" << std::endl;
         matcher->knnMatch(descriptors1, descriptors2, correspondences, 2);
     }
     else if(DESCRIPTOR_MATCHING_METHOD == "brute_force"){
@@ -204,12 +205,17 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
         // Mat keypoints_on_image;
         // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
         // imwrite("/Users/k/Desktop/courses/3dscanning/3DScanning/harris_corner_keypoints/" + img_name, keypoints_on_image);
-        // imwrite("/Users/k/Desktop/courses/3dscanning/3DScanning/harris_corner/" + img_name, distance_norm_scaled);
+        imwrite("/Users/k/Desktop/courses/3dscanning/3DScanning/harris_corner/" + img_name, distance_norm_scaled);
         // imwrite("/Users/k/Desktop/courses/3dscanning/3DScanning/harris_corner_unlabeled/" + img_name, distance_norm);
         // https://docs.opencv.org/3.4/d4/d7d/tutorial_harris_detector.html
         struct detectResult result;
         result.keypoints = keypoints;
-        result.descriptors = distance_norm_scaled; // TODO: how to get descriptors?
+        int nfeatures = 0, nOctaveLayers = 3;
+        double contrastThreshold = 0.04, edgeThreshold = 10, sigma = 1.6;
+        Ptr<SIFT> sift_detector = SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
+        Mat descriptors;
+        sift_detector->compute(img, keypoints, descriptors);
+        result.descriptors = descriptors; // NOTICE: use the sift descriptor for every keypoint detecting method
         result.filetype = extract_file_name(img_name);
         return result;
     }
@@ -221,9 +227,9 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
         std::vector<KeyPoint> keypoints;
         Mat descriptors;
         sift_detector->detectAndCompute(img, Mat(), keypoints, descriptors);
-        // Mat keypoints_on_image;
-        // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
-        // imwrite("/Users/k/Desktop/courses/3dscanning/3DScanning/sift/" + img_name, keypoints_on_image);
+        Mat keypoints_on_image;
+        drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
+        imwrite("/Users/k/Desktop/courses/3dscanning/3DScanning/sift/" + img_name, keypoints_on_image);
         // https://docs.opencv.org/3.4/d7/d66/tutorial_feature_detection.html 
         struct detectResult result;
         result.keypoints = keypoints;
