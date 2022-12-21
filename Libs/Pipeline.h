@@ -213,6 +213,79 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
         result.filetype = extract_file_name(img_name);
         return result;
     }
+    else if (compare_string(DESCRIPTOR_METHOD, "shi-tomasi")) {
+        std::vector<Point2f> corners;
+        double qualityLevel = 0.01;
+        double minDistance = 10;
+        int maxCorners = 0, blockSize = 3, gradientSize = 3;
+        bool useHarrisDetector = false;
+        double k = 0.04;
+        Mat img_gray;
+        cvtColor(img, img_gray, COLOR_BGR2GRAY);
+
+        goodFeaturesToTrack(img_gray,
+                            corners,
+                            maxCorners,
+                            qualityLevel,
+                            minDistance,
+                            Mat(),
+                            blockSize,
+                            gradientSize,
+                            useHarrisDetector,
+                            k);
+
+        std::vector<KeyPoint> keypoints;
+        for (size_t i = 0; i < corners.size(); i++) {
+            keypoints.push_back(KeyPoint(corners[i].x, corners[i].y, 4.0));
+        }
+
+        /*
+        Mat image_with_keypoints;
+        drawKeypoints(img, keypoints, image_with_keypoints, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
+        imshow("Shi-Tomasi", image_with_keypoints);
+        waitKey();
+        */
+
+        int nfeatures = 0, nOctaveLayers = 3;
+        double contrastThreshold = 0.04, edgeThreshold = 10, sigma = 1.6;
+        Ptr<SIFT> siftDetector = SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
+        Mat descriptors;
+        siftDetector->compute(img, keypoints, descriptors);
+        
+        struct detectResult result;
+        result.keypoints = keypoints;
+        result.descriptors = descriptors;
+        result.filetype = extract_file_name(img_name);
+        return result;
+    }
+    else if (compare_string(DESCRIPTOR_METHOD, "fast")) {
+        Ptr<FastFeatureDetector> fastDetector = FastFeatureDetector::create();
+        
+        Mat img_gray;
+        cvtColor(img, img_gray, COLOR_BGR2GRAY);
+        std::vector<KeyPoint> keypoints;
+
+        fastDetector->detect(img_gray, keypoints);
+
+        /*
+        Mat image_with_keypoints;
+        drawKeypoints(img, keypoints, image_with_keypoints, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
+        imshow("FAST", image_with_keypoints);
+        waitKey();
+        */
+
+        int nfeatures = 0, nOctaveLayers = 3;
+        double contrastThreshold = 0.04, edgeThreshold = 10, sigma = 1.6;
+        Ptr<SIFT> siftDetector = SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
+        Mat descriptors;
+        siftDetector->compute(img, keypoints, descriptors);
+        
+        struct detectResult result;
+        result.keypoints = keypoints;
+        result.descriptors = descriptors;
+        result.filetype = extract_file_name(img_name);
+        return result;
+    }
     struct detectResult result;
     return result;
 }
