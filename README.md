@@ -10,3 +10,4 @@ Typically, people start with calibrated cameras as input in their datasets to si
 ## Questions
 - opencv only provides feature matcher, which use feature descriptors as input. There is no keypoint matcher in opencv. But harris keypoint matcher produce keypoints and harris corner responses. 
 - Why the matching result of feature matcher contains the index of keypoints
+- still confusing about how to merge multiple point clouds to get a whole 3D model because ICP seems not to do the job.

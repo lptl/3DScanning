@@ -27,6 +27,15 @@ void process_pair_images(std::string dataset_dir, std::string filename1, std::st
     // use rectified images to do stereo matching
     // https://docs.opencv.org/3.4/d2/d6e/classcv_1_1StereoMatcher.html#a03f7087df1b2c618462eb98898841345
     std::cout << "Finished processing " << filename1 << " and " << filename2 << std::endl;
+    // other steps
+    // reconstruct the whole 3D model from chunks of small 3D models
+    // https://docs.opencv.org/3.4/d9/d0c/group__calib3d.html#ga4b1dab0d1d0d0f3a67b621a27c39b5a5
+    if(reconstruct())
+        std::cout << "Reconstruction finished" << std::endl;
+    else{
+        std::cout << "Reconstruction failed" << std::endl;
+        exit(-1);
+    }
     return;
 }
 

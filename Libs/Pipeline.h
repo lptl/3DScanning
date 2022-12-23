@@ -7,6 +7,10 @@
 
 #include "OpenCVLib.h"
 #include "Utils.h"
+#include "SimpleMesh.h"
+#include "PointCloud.h"
+#include "ProcrustesAligner.h"
+#include "NearestNeighbour.h"
 
 #define DESCRIPTOR_METHOD "brisk" // harris, sift, surf, orb, brisk
 #define DESCRIPTOR_MATCHING_METHOD "brute_force" // flann, brute_force
@@ -288,4 +292,12 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
     }
     struct detectResult result;
     return result;
+}
+
+int reconstruct(){
+    for(all two meshes){
+        use icp to merge two meshes
+        store the merged mesh and use the merged mesh as the new mesh
+    }
+    return the final merged mesh
 }
