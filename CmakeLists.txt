@@ -4,18 +4,23 @@ project(StereoReconstruction)
 set(CMAKE_CXX_STANDARD 14)
 
 # require some packages, include the directory of the package
-find_package(OpenCV REQUIRED)
-find_package(Eigen3 REQUIRED)
-find_package(Flann REQUIRED)
-find_package(Ceres REQUIRED)
-include_directories("/opt/homebrew/Cellar/opencv/4.6.0_1/include/opencv4")
+# if you want to use local libs
+set(Flann_INCLUDE_DIR "./Libs/Flann-1.8.4/" CACHE PATH "Path to Flann source folder")
+# include_directories("/opt/homebrew/Cellar/lz4/1.9.4/include")
+# include_directories("/opt/homebrew/Cellar/flann/1.9.2/include/flann")
 include_directories("/opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3")
-include_directories("/opt/homebrew/Cellar/flann/1.9.1_13/include/flann")
 include_directories("/opt/homebrew/Cellar/ceres-solver/2.1.0_1/include/ceres")
+include_directories("/opt/homebrew/Cellar/opencv/4.7.0/include/opencv4")
+
+find_package(Eigen3 REQUIRED)
+#find_package(Flann REQUIRED)
+find_package(Ceres REQUIRED)
+find_package(OpenCV REQUIRED)
 
 # link libraries
 add_executable(StereoReconstruction main.cpp)
-target_link_libraries(StereoReconstruction ${OpenCV_LIBS})
+# target_link_libraries(StereoReconstruction ${Flann_LIBS})
+target_include_directories(StereoReconstruction PUBLIC ${Flann_INCLUDE_DIR})
 target_link_libraries(StereoReconstruction ${Eigen3_LIBS})
-target_link_libraries(StereoReconstruction ${Flann_LIBS})
 target_link_libraries(StereoReconstruction ${Ceres_LIBS})
+target_link_libraries(StereoReconstruction ${OpenCV_LIBS})

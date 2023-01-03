@@ -1,20 +1,25 @@
 #pragma once
 
+//internal libs
 #include <iostream>
 #include <fstream>
 #include <array>
 #include <dirent.h>
-
-#include "OpenCVLib.h"
-#include "Utils.h"
+// libs that don't involve opencv
 #include "SimpleMesh.h"
 #include "PointCloud.h"
 #include "ProcrustesAligner.h"
 #include "NearestNeighbour.h"
+#include "ICPOptimizer.h"
+// libs that involve opencv
+#include "OpenCVLib.h"
+#include "Utils.h"
 
 #define DESCRIPTOR_METHOD "brisk" // harris, sift, surf, orb, brisk
 #define DESCRIPTOR_MATCHING_METHOD "brute_force" // flann, brute_force
 #define FUNDAMENTAL_MATRIX_METHOD "ransac" // ransac, lmeds, 7point, 8point
+#define USE_LINEAR_ICP true
+#define USE_POINT_TO_PLANE false
 
 using namespace cv;
 using namespace cv::xfeatures2d; 
@@ -39,7 +44,7 @@ void rectify_images(Mat img1, Mat img2, std::vector<KeyPoint> keypoints1, std::v
         return;
     }
     Mat rectified1, rectified2;
-    // TODO: rectify images
+    // TODO: rectify images from caculate homography
     warpPerspective(img1, rectified1, homography1, img1.size());
     warpPerspective(img2, rectified2, homography2, img2.size());
     return;
@@ -294,10 +299,57 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
     return result;
 }
 
-int reconstruct(){
-    for(all two meshes){
-        use icp to merge two meshes
-        store the merged mesh and use the merged mesh as the new mesh
-    }
-    return the final merged mesh
-}
+bool icp_reconstruct(const std::string base_model, const std::string other_model, std::string& target_model){
+    //const std::string other_model = std::string("/Users/k/Desktop/Courses/3dscanning/3DScanning/bunny/bunny_part1.off");
+    //const std::string source_model = std::string("/Users/k/Desktop/Courses/3dscanning/3DScanning/bunny/bunny_part2_trans.off");
+    
+    SimpleMesh sourceMesh;
+	if (!sourceMesh.loadMesh(base_model)) {
+		std::cout << "Mesh file wasn't read successfully at location: " << base_model << std::endl;
+		return false;
+	}
+
+	SimpleMesh targetMesh;
+	if (!targetMesh.loadMesh(other_model)) {
+		std::cout << "Mesh file wasn't read successfully at location: " << other_model << std::endl;
+		return false;
+	}
+
+	// Estimate the pose from source to target mesh with ICP optimization.
+	ICPOptimizer* optimizer = nullptr;
+	if (USE_LINEAR_ICP) {
+        std::cout << "USING LINEAR ICP" << std::endl;
+		optimizer = new LinearICPOptimizer();
+	}
+	else {
+		optimizer = new CeresICPOptimizer();
+	}
+	
+	optimizer->setMatchingMaxDistance(0.0003f);
+	if (USE_POINT_TO_PLANE) {
+        std::cout << "USING POINT TO PLANE" << std::endl;
+		optimizer->usePointToPlaneConstraints(true);
+		optimizer->setNbOfIterations(10);
+	}
+	else {
+		optimizer->usePointToPlaneConstraints(false);
+		optimizer->setNbOfIterations(20);
+	}
+
+	PointCloud source{ sourceMesh };
+	PointCloud target{ targetMesh };
+
+    Matrix4f estimatedPose = Matrix4f::Identity();
+	optimizer->estimatePose(source, target, estimatedPose);
+	
+	// Visualize the resulting joined mesh. We add triangulated spheres for point matches.
+    std::cout << "joining meshes" << std::endl;
+	SimpleMesh resultingMesh = SimpleMesh::joinMeshes(sourceMesh, targetMesh, estimatedPose);
+    std::cout << "mesh joined" << std::endl;
+	resultingMesh.writeMesh(target_model);
+	std::cout << "Resulting mesh written." << std::endl;
+
+	delete optimizer;
+
+	return true;
+}    
