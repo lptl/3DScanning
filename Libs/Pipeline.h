@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <array>
+
 #include <dirent.h>
 
 #include "OpenCVLib.h"
@@ -11,9 +12,11 @@
 #define DESCRIPTOR_METHOD "brisk" // harris, sift, surf, orb, brisk
 #define DESCRIPTOR_MATCHING_METHOD "brute_force" // flann, brute_force
 #define FUNDAMENTAL_MATRIX_METHOD "ransac" // ransac, lmeds, 7point, 8point
+#define MATCHING_METHOD "bm" // bm, sgbm
 
 using namespace cv;
-using namespace cv::xfeatures2d; 
+using namespace cv::xfeatures2d;
+using namespace cv::ximgproc;
 
 std::string PROJECT_PATH = "/Users/k/Desktop/courses/3dscanning/3DScanning/";
 
@@ -288,4 +291,50 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
     }
     struct detectResult result;
     return result;
+}
+
+Mat compute_disparity_map(Mat left, Mat right) {
+    if (compare_string(MATCHING_METHOD, "bm")) {
+        int max_disp = 160, wsize = 15;
+        Ptr<StereoBM> left_matcher = StereoBM::create(max_disp, wsize);
+
+        Mat left_gray, right_gray, left_disp;
+        cvtColor(left, left_gray, COLOR_BGR2GRAY);
+        cvtColor(right, right_gray, COLOR_BGR2GRAY);
+
+        left_matcher->compute(left_gray, right_gray, left_disp);
+
+        /*
+        Mat left_disp_vis;
+        getDisparityVis(left_disp, left_disp_vis);
+        imshow("Left Disparity", left_disp_vis);
+        waitKey();
+        */
+
+        return left_disp;
+    }
+    else if (compare_string(MATCHING_METHOD, "sgbm")) {
+        int max_disp = 160, wsize = 3;
+        Ptr<StereoSGBM> left_matcher = StereoSGBM::create(0, max_disp, wsize);
+        left_matcher->setP1(24 * wsize * wsize);
+        left_matcher->setP2(96 * wsize * wsize);
+        left_matcher->setPreFilterCap(63);
+        left_matcher->setMode(StereoSGBM::MODE_SGBM_3WAY);
+
+        Mat left_gray, right_gray, left_disp;
+        cvtColor(left, left_gray, COLOR_BGR2GRAY);
+        cvtColor(right, right_gray, COLOR_BGR2GRAY);
+
+        left_matcher->compute(left_gray, right_gray, left_disp);
+
+        /*
+        Mat left_disp_vis;
+        getDisparityVis(left_disp, left_disp_vis);
+        imshow("Left Disparity", left_disp_vis);
+        waitKey();
+        */
+
+        return left_disp;
+    }
+
 }
