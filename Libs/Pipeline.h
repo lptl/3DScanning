@@ -4,6 +4,8 @@
 #include <fstream>
 #include <array>
 
+#include <dirent.h>
+
 #include "OpenCVLib.h"
 #include "Utils.h"
 
@@ -16,7 +18,7 @@ using namespace cv;
 using namespace cv::xfeatures2d;
 using namespace cv::ximgproc;
 
-std::string PROJECT_PATH = "E:/Study/Courses/3DScanningMotionCapture/Project/";
+std::string PROJECT_PATH = "/Users/k/Desktop/courses/3dscanning/3DScanning/";
 
 void rectify_images(Mat img1, Mat img2, std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences, Mat fundamental_matrix){
     std::vector<Point2f> points1, points2;
@@ -334,4 +336,5 @@ Mat compute_disparity_map(Mat left, Mat right) {
 
         return left_disp;
     }
+
 }

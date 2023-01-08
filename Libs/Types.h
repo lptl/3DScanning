@@ -8,7 +8,7 @@ struct filenameType {
     std::string name = ""; // fullname
 };
 
-struct detectResult {
+struct detectResult{
     std::vector<cv::KeyPoint> keypoints;
     cv::Mat descriptors;
     struct filenameType filetype;
