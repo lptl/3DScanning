@@ -26,6 +26,8 @@ void process_pair_images(std::string dataset_dir, std::string filename1, std::st
     rectify_images(img1, img2, result1.keypoints, result2.keypoints, correspondences, fundamental_matrix);
     // use rectified images to do stereo matching
     // https://docs.opencv.org/3.4/d2/d6e/classcv_1_1StereoMatcher.html#a03f7087df1b2c618462eb98898841345
+    std::cout << "Computing disparity map for image " << std::endl;
+    compute_disparity_map(img1, img2);
     std::cout << "Finished processing " << filename1 << " and " << filename2 << std::endl;
     return;
 }
