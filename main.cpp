@@ -64,6 +64,7 @@ void processImagePair(string datasetDir, string filename1, string filename2) {
     rectifyImages(img1, img2, result1.keypoints, result2.keypoints, correspondences, fundamental_matrix);
     
     // use rectified images to do stereo matching
+<<<<<<< Updated upstream
     // https://docs.opencv.org/4.6.0/d2/d6e/classcv_1_1StereoMatcher.html#a03f7087df1b2c618462eb98898841345
     cout << "Finished processing " << filename1 << " and " << filename2 << endl;
     return;
@@ -95,6 +96,12 @@ void rectifyImages(Mat img1, Mat img2, vector<KeyPoint> keypoints1, vector<KeyPo
     warpPerspective(img1, rectified1, homography1, img1.size());
     warpPerspective(img2, rectified2, homography2, img2.size());
 
+=======
+    // https://docs.opencv.org/3.4/d2/d6e/classcv_1_1StereoMatcher.html#a03f7087df1b2c618462eb98898841345
+    std::cout << "Computing disparity map for image " << std::endl;
+    compute_disparity_map(img1, img2);
+    std::cout << "Finished processing " << filename1 << " and " << filename2 << std::endl;
+>>>>>>> Stashed changes
     return;
 }
 
@@ -254,6 +261,7 @@ string padZeroes(const int i, const int length) {
 
 int main()
 {
+<<<<<<< Updated upstream
     string datasetDir = "E:/Study/Courses/3DScanningMotionCapture/Project/Data/bricks-rgbd/";
 
     int currentIdx = 0, increment = 1, maxIdx = 772;
@@ -265,6 +273,25 @@ int main()
         processImagePair(datasetDir, filename1, filename2);
         
         currentIdx = currentIdx + increment;
+=======
+    std::string dataset_dir = PROJECT_PATH + "Data/bricks-rgbd/";
+    DIR* directory = opendir(dataset_dir.c_str());
+    struct dirent* entry;
+    if (directory == NULL) {
+        std::cout << "Error in main.cpp main(): Directory not found or failed to open directory." << std::endl;
+        return -1;
+    }
+    else {
+        while ((entry = readdir(directory)) != NULL) {
+            if (entry->d_name[0] != 'f')
+                continue;
+            struct filenameType filename_type = extract_file_name(entry->d_name);
+            if (filename_type.category != 0)
+                continue;
+            process_pair_images(dataset_dir, entry->d_name, get_file_name(filename_type.number + 1, filename_type.category));
+        }
+        closedir(directory);
+>>>>>>> Stashed changes
     }
 
     cout << "Stereo Reconstruction Finished" << endl;
