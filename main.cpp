@@ -8,6 +8,7 @@
 // this is the directory to store small chunks of models
 #define MODELS_DIR "Models/"
 
+
 void process_pair_images(std::string dataset_dir, std::string filename1, std::string filename2){
     Mat img1 = imread(dataset_dir + filename1, IMREAD_COLOR);
     Mat img2 = imread(dataset_dir + filename2, IMREAD_COLOR);
@@ -31,6 +32,9 @@ void process_pair_images(std::string dataset_dir, std::string filename1, std::st
     // https://docs.opencv.org/3.4/d2/d6e/classcv_1_1StereoMatcher.html#a03f7087df1b2c618462eb98898841345
     // 2.reconstruct small chunks 3D model from disparity map
     // https://docs.opencv.org/3.4/d9/d0c/group__calib3d.html#ga4b1dab0d1d0d0f3a67b621a27c39b5a5
+    std::cout << "Computing disparity map for image " << std::endl;
+    compute_disparity_map(img1, img2);
+    std::cout << "Finished processing " << filename1 << " and " << filename2 << std::endl;
     return;
 }
 
