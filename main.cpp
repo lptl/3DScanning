@@ -66,6 +66,10 @@ int main()
 {
     std::string dataset_dir = PROJECT_PATH + "bricks-rgbd/";
     DIR* directory = opendir(dataset_dir.c_str());
+    /*
+    Compute the running time of function
+    computeRunTime([&](){std::vector<detectResult> results = processXimages(20, dataset_dir);});
+     */
     struct dirent* entry;
     if(directory == NULL){
         std::cout << "Error in main.cpp main(): Directory not found or failed to open directory." << std::endl;
