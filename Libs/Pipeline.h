@@ -405,3 +405,72 @@ Mat compute_disparity_map(Mat left, Mat right) {
 
 }
 
+void PointCloudGenerate(cv::Mat depth_map, int file_order = 0){
+    /*
+    if(dataset.name!=bricks_rgbd){
+        cout<<"dataset error from pointcloud.cpp!"<<endl;
+        exit(0);
+    }*/
+    float fX = 577.871;
+    float fY = 580.258;
+    float cX = 319.623;
+    float cY = 239.624; 
+
+    int width = depth_map.cols;
+    int height = depth_map.rows;
+
+    Vertex* vertices = new Vertex[width*height];
+    for(int h = 0; h < height; h++){
+        for(int w = 0; w < width; w++){
+            int idx = h * width + w;
+            // float depth = *(depthMap + idx);
+            float depth = (float)(depth_map.at<short>(h,w)); 
+            depth = depth;
+            if(depth != MINF && depth != 0 && depth < 100){ // range filter: (0, 1 meter)
+                float X_c = (float(w)-cX) * depth / fX;
+                float Y_c = (float(h)-cY) * depth / fY;
+                Vector4f P_c = Vector4f(X_c, Y_c, depth, 1);
+
+                vertices[idx].position = P_c;
+                /*
+                unsigned char R = rgb_map.at<Vec3b>(h,w)[2];
+                unsigned char G = rgb_map.at<Vec3b>(h,w)[1];
+                unsigned char B = rgb_map.at<Vec3b>(h,w)[0];
+                unsigned char A = 255;
+                vertices[idx].color = Vector4uc(R, G, B, A); */
+            }
+            else{
+                vertices[idx].position = Vector4f(MINF, MINF, MINF, MINF);
+                vertices[idx].color = Vector4uc(0, 0, 0, 0);
+            }
+        }
+    }
+    /*
+    // write to the off file
+    std::stringstream ss;
+    ss << "bricks_rgbd" << file_order <<".off";
+    WriteMesh(vertices, width, height, ss.str());
+    */
+}
+
+cv::Mat convertDisparityToDepth(const cv::Mat &disparityMap, const float baseline, const float fx) {
+    cv::Mat depthMap = cv::Mat(disparityMap.size(), CV_16U);
+    for (int i = 0; i < disparityMap.rows; i++) {
+        for (int j = 0; j < disparityMap.cols; j++) {
+            double d = static_cast<double>(disparityMap.at<float>(i, j));
+            depthMap.at<unsigned short>(i, j) = (baseline * fx) / d;
+            // depthMap.at<unsigned short>(i, j) = d;
+            // if (d < 10)
+            //     depthMap.at<unsigned short>(i, j) = -1;
+            // if (d>0) std::cout << "The disparity is: "<< (baseline * fx) / d<< std::endl;
+            short disparity_ij = disparityMap.at<unsigned short>(i, j);
+            if(disparity_ij <= 1)
+                depthMap.at<unsigned short>(i, j) = 0;
+
+            if (std::isnan(depthMap.at<unsigned short>(i, j)) || std::isinf(depthMap.at<unsigned short>(i, j)))
+                depthMap.at<unsigned short>(i, j) = 0;
+        }
+    }
+
+    return depthMap;
+}

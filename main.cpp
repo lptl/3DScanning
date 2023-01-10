@@ -51,12 +51,12 @@ void reconstruct(std::string models_directory){
                 continue;
             }
             other_model = models_directory + std::string(entry->d_name);
-            target_mode = models_directory + std::string(index) + ".off"
+            target_model = models_directory + std::to_string(index) + ".off";
             if(!icp_reconstruct(base_model, other_model, target_model)){
                 std::cout << "Error: Failed to reconstruct model. Skipped one model: " + base_model << std::endl;
-                base_mode = other_model;
+                base_model = other_model;
             }
-            else: base_model = target_model;
+            else base_model = target_model;
             index++;
         }   
     }

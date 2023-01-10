@@ -1,0 +1,7 @@
+vcpkg/
+CMakeFiles/
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+.vscode/
+StereoReconstruction
