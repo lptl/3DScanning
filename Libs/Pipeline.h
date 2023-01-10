@@ -4,6 +4,8 @@
 #include <fstream>
 #include <array>
 
+#include <dirent.h>
+
 #include "OpenCVLib.h"
 #include "Utils.h"
 
@@ -17,7 +19,7 @@ using namespace xfeatures2d;
 using namespace ximgproc;
 using namespace Eigen;
 
-std::string PROJECT_PATH = "E:/Study/Courses/3DScanningMotionCapture/Project/";
+std::string PROJECT_PATH = "/Users/k/Desktop/courses/3dscanning/3DScanning/";
 
 std::vector<std::string> rectify_images(Mat img1, std::string filename1, Mat img2, std::string filename2, std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences, Mat fundamental_matrix){
     std::vector<Point2f> points1, points2;

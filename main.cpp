@@ -5,11 +5,12 @@
 
 #include "Libs/Pipeline.h"
 
-void process_pair_images(std::string dataset_dir, std::string filename1, std::string filename2) {
+
+void process_pair_images(std::string dataset_dir, std::string filename1, std::string filename2){
     Mat img1 = imread(dataset_dir + filename1, IMREAD_COLOR);
     Mat img2 = imread(dataset_dir + filename2, IMREAD_COLOR);
     // TODO: calibrate image distortion if needed
-    if (img1.empty() || img2.empty()) {
+    if(img1.empty() || img2.empty()){
         std::cout << "Error: Image not found or failed to open image." << std::endl;
         return;
     }
@@ -47,18 +48,17 @@ int main()
     std::string dataset_dir = PROJECT_PATH + "Data/bricks-rgbd/";
     DIR* directory = opendir(dataset_dir.c_str());
     struct dirent* entry;
-    if (directory == NULL) {
+    if(directory == NULL){
         std::cout << "Error in main.cpp main(): Directory not found or failed to open directory." << std::endl;
         return -1;
-    }
-    else {
-        while ((entry = readdir(directory)) != NULL) {
-            if (entry->d_name[0] != 'f')
+    } else {
+        while((entry = readdir(directory)) != NULL){
+            if(entry->d_name[0] != 'f')
                 continue;
             struct filenameType filename_type = extract_file_name(entry->d_name);
-            if (filename_type.category != 0)
+            if(filename_type.category != 0)
                 continue;
-            process_pair_images(dataset_dir, entry->d_name, get_file_name(filename_type.number + 1, filename_type.category));
+            process_pair_images(dataset_dir, entry->d_name, get_file_name(filename_type.number+1, filename_type.category));
         }
         closedir(directory);
     }
