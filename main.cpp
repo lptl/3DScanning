@@ -17,24 +17,34 @@ void process_pair_images(std::string dataset_dir, std::string filename1, std::st
     struct detectResult result1 = detect_keypoints_or_features(dataset_dir, filename1, img1);
     struct detectResult result2 = detect_keypoints_or_features(dataset_dir, filename2, img2);
     std::cout << "Processing " << filename1 << " and " << filename2 << std::endl;
+
     std::cout << "Matching descriptors for image " << std::endl;
     std::vector<DMatch> correspondences = match_descriptors(img1, img2, result1, result2);
+
     std::cout << "Finding fundamental matrix for image " << std::endl;
     Mat fundamental_matrix = find_fundamental_matrix(result1.keypoints, result2.keypoints, correspondences);
     // std::cout << fundamental_matrix << std::endl;
+
     std::cout << "Rectifying images for image " << std::endl;
-    rectify_images(img1, img2, result1.keypoints, result2.keypoints, correspondences, fundamental_matrix);
+    std::vector<std::string> rectified = rectify_images(img1, filename1, img2, filename2, result1.keypoints, result2.keypoints, correspondences, fundamental_matrix);
+
     // use rectified images to do stereo matching
     // https://docs.opencv.org/3.4/d2/d6e/classcv_1_1StereoMatcher.html#a03f7087df1b2c618462eb98898841345
     std::cout << "Computing disparity map for image " << std::endl;
-    compute_disparity_map(img1, img2);
+    // Need to use rectified images here instead of actual images
+    Mat disp = compute_disparity_map(rectified[0], rectified[1]);
+
+    //std::cout << "Generating point cloud for image " << std::endl;
+    //Mat depth = convert_disparity_to_depth(disp);
+    //point_cloud_generate(depth);
+
     std::cout << "Finished processing " << filename1 << " and " << filename2 << std::endl;
     return;
 }
 
 int main()
 {
-    std::string dataset_dir = PROJECT_PATH + "bricks-rgbd/";
+    std::string dataset_dir = PROJECT_PATH + "Data/bricks-rgbd/";
     DIR* directory = opendir(dataset_dir.c_str());
     struct dirent* entry;
     if (directory == NULL) {

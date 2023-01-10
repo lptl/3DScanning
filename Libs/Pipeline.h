@@ -13,12 +13,13 @@
 #define MATCHING_METHOD "bm" // bm, sgbm
 
 using namespace cv;
-using namespace cv::xfeatures2d;
-using namespace cv::ximgproc;
+using namespace xfeatures2d;
+using namespace ximgproc;
+using namespace Eigen;
 
 std::string PROJECT_PATH = "E:/Study/Courses/3DScanningMotionCapture/Project/";
 
-void rectify_images(Mat img1, Mat img2, std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences, Mat fundamental_matrix){
+std::vector<std::string> rectify_images(Mat img1, std::string filename1, Mat img2, std::string filename2, std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences, Mat fundamental_matrix){
     std::vector<Point2f> points1, points2;
     for(int i = 0; i < correspondences.size(); i++){
         points1.push_back(keypoints1[correspondences[i].queryIdx].pt);
@@ -26,20 +27,32 @@ void rectify_images(Mat img1, Mat img2, std::vector<KeyPoint> keypoints1, std::v
     }
     if(points1.size() != points2.size() || points1.size() < 8){
         std::cout << "Error: The number of points is not enough." << std::endl;
-        return;
+        return {};
     }
     Mat homography1, homography2;
     double threshold = 5.0;
     // TODO: the following function doesn't require intrinsic paramters, but we have intrinsic parameters to be used
     if(!stereoRectifyUncalibrated(points1, points2, fundamental_matrix, img1.size(), homography1, homography2, threshold)){
         std::cout << "Error: Failed to rectify images." << std::endl;
-        return;
+        return {};
     }
     Mat rectified1, rectified2;
+    struct filenameType img1_name = extract_file_name(filename1);
+    struct filenameType img2_name = extract_file_name(filename2);
+    std::vector<std::string> outfiles;
+
     // TODO: rectify images
     warpPerspective(img1, rectified1, homography1, img1.size());
+    std::string outfile1 = PROJECT_PATH + "rectified_left/" + std::to_string(img1_name.number) + ".png";
+    imwrite(outfile1, rectified1);
+    outfiles.push_back(outfile1);
+
     warpPerspective(img2, rectified2, homography2, img2.size());
-    return;
+    std::string outfile2 = PROJECT_PATH + "rectified_right/" + std::to_string(img2_name.number) + ".png";
+    imwrite(outfile2, rectified2);
+    outfiles.push_back(outfile2);
+
+    return outfiles;
 }
 
 Mat find_fundamental_matrix(std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences){
@@ -291,7 +304,10 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
     return result;
 }
 
-Mat compute_disparity_map(Mat left, Mat right) {
+Mat compute_disparity_map(std::string left_filename, std::string right_filename) {
+    Mat left = imread(left_filename);
+    Mat right = imread(right_filename);
+
     if (compare_string(MATCHING_METHOD, "bm")) {
         int max_disp = 160, wsize = 15;
         Ptr<StereoBM> left_matcher = StereoBM::create(max_disp, wsize);
@@ -334,4 +350,77 @@ Mat compute_disparity_map(Mat left, Mat right) {
 
         return left_disp;
     }
+}
+
+Mat convert_disparity_to_depth(const Mat& disparityMap) {
+    const float baseline = 10.0;
+    const float fx = 10.0;
+    Mat depthMap = Mat(disparityMap.size(), CV_16U);
+    for (int i = 0; i < disparityMap.rows; i++) {
+        for (int j = 0; j < disparityMap.cols; j++) {
+            double d = static_cast<double>(disparityMap.at<float>(i, j));
+            depthMap.at<unsigned short>(i, j) = (baseline * fx) / d;
+            // depthMap.at<unsigned short>(i, j) = d;
+            // if (d < 10)
+            //     depthMap.at<unsigned short>(i, j) = -1;
+            // if (d>0) std::cout << "The disparity is: "<< (baseline * fx) / d<< std::endl;
+            short disparity_ij = disparityMap.at<unsigned short>(i, j);
+            if (disparity_ij <= 1)
+                depthMap.at<unsigned short>(i, j) = 0;
+
+            if (std::isnan(depthMap.at<unsigned short>(i, j)) || std::isinf(depthMap.at<unsigned short>(i, j)))
+                depthMap.at<unsigned short>(i, j) = 0;
+        }
+    }
+
+    return depthMap;
+}
+
+void point_cloud_generate(Mat depth_map) {
+    /*
+    if(dataset.name!=bricks_rgbd){
+        cout<<"dataset error from pointcloud.cpp!"<<endl;
+        exit(0);
+    }*/
+    float fX = 577.871;
+    float fY = 580.258;
+    float cX = 319.623;
+    float cY = 239.624;
+
+    int width = depth_map.cols;
+    int height = depth_map.rows;
+
+    Vertex* vertices = new Vertex[width * height];
+    for (int h = 0; h < height; h++) {
+        for (int w = 0; w < width; w++) {
+            int idx = h * width + w;
+            // float depth = *(depthMap + idx);
+            float depth = (float)(depth_map.at<short>(h, w));
+            depth = depth;
+            if (depth != MINF && depth != 0 && depth < 100) { // range filter: (0, 1 meter)
+                float X_c = (float(w) - cX) * depth / fX;
+                float Y_c = (float(h) - cY) * depth / fY;
+                Vector4f P_c = Vector4f(X_c, Y_c, depth, 1);
+
+                vertices[idx].position = P_c;
+                /*
+                unsigned char R = rgb_map.at<Vec3b>(h,w)[2];
+                unsigned char G = rgb_map.at<Vec3b>(h,w)[1];
+                unsigned char B = rgb_map.at<Vec3b>(h,w)[0];
+                unsigned char A = 255;
+                vertices[idx].color = Vector4uc(R, G, B, A); */
+            }
+            else {
+                vertices[idx].position = Vector4f(MINF, MINF, MINF, MINF);
+                //vertices[idx].color = Vector4uc(0, 0, 0, 0);
+            }
+        }
+    }
+    
+    /*
+    // write to the off file
+    std::stringstream ss;
+    ss << "bricks_rgbd" << file_order << ".off";
+    WriteMesh(vertices, width, height, ss.str());
+    */
 }

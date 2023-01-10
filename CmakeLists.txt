@@ -15,7 +15,7 @@ find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
 
 set(HEADER_FILES 
-    Eigen.h
+    Libs/Eigen.h
 )
 
 add_executable(StereoReconstruction main.cpp ${HEADER_FILES})
