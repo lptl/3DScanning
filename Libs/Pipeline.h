@@ -4,7 +4,6 @@
 #include <iostream>
 #include <fstream>
 #include <array>
-
 #include <dirent.h>
 // libs that don't involve opencv
 #include "SimpleMesh.h"
@@ -16,103 +15,20 @@
 #include "OpenCVLib.h"
 #include "Utils.h"
 
-#define DESCRIPTOR_METHOD "brisk" // harris, sift, surf, orb, brisk
+#define DESCRIPTOR_METHOD "brisk" // harris, sift, surf, orb, brisk, shi-tomasi, fast
 #define DESCRIPTOR_MATCHING_METHOD "brute_force" // flann, brute_force
 #define FUNDAMENTAL_MATRIX_METHOD "ransac" // ransac, lmeds, 7point, 8point
+#define MATCHING_METHOD "bm" // bm, sgbm
 
 #define USE_LINEAR_ICP true
 #define USE_POINT_TO_PLANE false
-#define MATCHING_METHOD "bm" // bm, sgbm
 
+std::string MODELS_DIR = "Models/";
+std::string PROJECT_PATH = "/Users/k/Desktop/courses/3dscanning/3DScanning/";
 
 using namespace cv;
 using namespace cv::xfeatures2d;
 using namespace cv::ximgproc;
-
-std::string PROJECT_PATH = "/Users/k/Desktop/courses/3dscanning/3DScanning/";
-
-void rectify_images(Mat img1, Mat img2, std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences, Mat fundamental_matrix){
-    std::vector<Point2f> points1, points2;
-    for(int i = 0; i < correspondences.size(); i++){
-        points1.push_back(keypoints1[correspondences[i].queryIdx].pt);
-        points2.push_back(keypoints2[correspondences[i].trainIdx].pt);   
-    }
-    if(points1.size() != points2.size() || points1.size() < 8){
-        std::cout << "Error: The number of points is not enough." << std::endl;
-        return;
-    }
-    Mat homography1, homography2;
-    double threshold = 5.0;
-    // TODO: the following function doesn't require intrinsic paramters, but we have intrinsic parameters to be used
-    if(!stereoRectifyUncalibrated(points1, points2, fundamental_matrix, img1.size(), homography1, homography2, threshold)){
-        std::cout << "Error: Failed to rectify images." << std::endl;
-        return;
-    }
-    Mat rectified1, rectified2;
-    // TODO: rectify images from caculate homography
-    warpPerspective(img1, rectified1, homography1, img1.size());
-    warpPerspective(img2, rectified2, homography2, img2.size());
-    return;
-}
-
-Mat find_fundamental_matrix(std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences){
-    std::vector<Point2f> points1, points2;
-    for(int i = 0; i < correspondences.size(); i++){
-        points1.push_back(keypoints1[correspondences[i].queryIdx].pt);
-        points2.push_back(keypoints2[correspondences[i].trainIdx].pt);   
-    }
-    if(points1.size() != points2.size() || points1.size() < 8){
-        std::cout << "Error: The number of points is not enough." << std::endl;
-        return Mat();
-    }
-    Mat fundamental_matrix;
-    double ransacReprojThreshold = 3.0, confidence = 0.99;
-    if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "ransac"))
-        fundamental_matrix = findFundamentalMat(points1, points2, FM_RANSAC, ransacReprojThreshold, confidence);
-    else if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "lmeds"))
-        fundamental_matrix = findFundamentalMat(points1, points2, FM_LMEDS, ransacReprojThreshold, confidence);
-    else if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "7point"))
-        fundamental_matrix = findFundamentalMat(points1, points2, FM_7POINT);
-    else if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "8point"))
-        fundamental_matrix = findFundamentalMat(points1, points2, FM_8POINT);
-    else{
-        std::cout << "Error: No such fundamental matrix method." << std::endl;
-        return Mat();
-    }
-    return fundamental_matrix;
-}
-
-std::vector<DMatch> match_descriptors(Mat img1, Mat img2, struct detectResult result1, struct detectResult result2){
-    Mat descriptors1 = result1.descriptors, descriptors2 = result2.descriptors;
-    std::vector<KeyPoint> keypoints1 = result1.keypoints, keypoints2 = result2.keypoints;
-    std::vector<std::vector<DMatch>> correspondences;
-    if(compare_string(DESCRIPTOR_MATCHING_METHOD, "flann")){
-        Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);
-        // the knn use NORM_L2 because sift is a float-pointing descriptor
-        // descriptor1 = queryDescriptor, descriptor2 = trainDescriptor
-        std::cout << "peforming flann based matching" << std::endl;
-        matcher->knnMatch(descriptors1, descriptors2, correspondences, 2);
-    }
-    else if(compare_string(DESCRIPTOR_MATCHING_METHOD, "brute_force")){
-        Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::BRUTEFORCE);
-        // the knn use NORM_L2 because sift is a float-pointing descriptor
-        matcher->knnMatch(descriptors1, descriptors2, correspondences, 2);
-    }
-    else{
-        std::cout << "Error: No such matching method." << std::endl;
-        exit(-1);
-    }
-    const float ratio_thresh = 0.7f;
-    std::vector<DMatch> good_matches;
-    for (size_t i = 0; i < correspondences.size(); i++){
-        if (correspondences[i][0].distance < ratio_thresh * correspondences[i][1].distance)
-            good_matches.push_back(correspondences[i][0]);
-    }
-    Mat img_matches;
-    drawMatches(img1, keypoints1, img2, keypoints2, good_matches, img_matches, Scalar::all(-1), Scalar::all(-1), std::vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
-    imwrite(PROJECT_PATH + "descriptor_match/" + std::to_string(result1.filetype.number) + "-" + std::to_string(result2.filetype.number) + ".png", img_matches);
-    return good_matches;
-}
 
 struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::string img_name, Mat img){
     if(compare_string(DESCRIPTOR_METHOD, "harris")) {
@@ -274,11 +190,9 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
     }
     else if (compare_string(DESCRIPTOR_METHOD, "fast")) {
         Ptr<FastFeatureDetector> fastDetector = FastFeatureDetector::create();
-        
         Mat img_gray;
         cvtColor(img, img_gray, COLOR_BGR2GRAY);
         std::vector<KeyPoint> keypoints;
-
         fastDetector->detect(img_gray, keypoints);
 
         /*
@@ -287,27 +201,212 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
         imshow("FAST", image_with_keypoints);
         waitKey();
         */
-
         int nfeatures = 0, nOctaveLayers = 3;
         double contrastThreshold = 0.04, edgeThreshold = 10, sigma = 1.6;
         Ptr<SIFT> siftDetector = SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
         Mat descriptors;
         siftDetector->compute(img, keypoints, descriptors);
-        
         struct detectResult result;
         result.keypoints = keypoints;
         result.descriptors = descriptors;
         result.filetype = extract_file_name(img_name);
         return result;
     }
-    struct detectResult result;
+    struct detectResult result; // just to make non-void function return something 
     return result;
 }
 
-bool icp_reconstruct(const std::string base_model, const std::string other_model, std::string& target_model){
-    //const std::string other_model = std::string("/Users/k/Desktop/Courses/3dscanning/3DScanning/bunny/bunny_part1.off");
-    //const std::string source_model = std::string("/Users/k/Desktop/Courses/3dscanning/3DScanning/bunny/bunny_part2_trans.off");
-    
+std::vector<DMatch> match_descriptors(Mat img1, Mat img2, struct detectResult result1, struct detectResult result2){
+    Mat descriptors1 = result1.descriptors, descriptors2 = result2.descriptors;
+    std::vector<KeyPoint> keypoints1 = result1.keypoints, keypoints2 = result2.keypoints;
+    std::vector<std::vector<DMatch>> correspondences;
+    if(compare_string(DESCRIPTOR_MATCHING_METHOD, "flann")){
+        Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);
+        // the knn use NORM_L2 because sift is a float-pointing descriptor
+        // descriptor1 = queryDescriptor, descriptor2 = trainDescriptor
+        std::cout << "peforming flann based matching" << std::endl;
+        matcher->knnMatch(descriptors1, descriptors2, correspondences, 2);
+    }
+    else if(compare_string(DESCRIPTOR_MATCHING_METHOD, "brute_force")){
+        Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::BRUTEFORCE);
+        // the knn use NORM_L2 because sift is a float-pointing descriptor
+        matcher->knnMatch(descriptors1, descriptors2, correspondences, 2);
+    }
+    else{
+        std::cout << "Error: No such matching method." << std::endl;
+        exit(-1);
+    }
+    const float ratio_thresh = 0.7f;
+    std::vector<DMatch> good_matches;
+    for (size_t i = 0; i < correspondences.size(); i++){
+        if (correspondences[i][0].distance < ratio_thresh * correspondences[i][1].distance)
+            good_matches.push_back(correspondences[i][0]);
+    }
+    Mat img_matches;
+    drawMatches(img1, keypoints1, img2, keypoints2, good_matches, img_matches, Scalar::all(-1), Scalar::all(-1), std::vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
+    imwrite(PROJECT_PATH + "descriptor_match/" + std::to_string(result1.filetype.number) + "-" + std::to_string(result2.filetype.number) + ".png", img_matches);
+    return good_matches;
+}
+
+Mat find_fundamental_matrix(std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences){
+    std::vector<Point2f> points1, points2;
+    for(int i = 0; i < correspondences.size(); i++){
+        points1.push_back(keypoints1[correspondences[i].queryIdx].pt);
+        points2.push_back(keypoints2[correspondences[i].trainIdx].pt);   
+    }
+    if(points1.size() != points2.size() || points1.size() < 8){
+        std::cout << "Error: The number of points is not enough." << std::endl;
+        return Mat();
+    }
+    Mat fundamental_matrix;
+    double ransacReprojThreshold = 3.0, confidence = 0.99;
+    if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "ransac"))
+        fundamental_matrix = findFundamentalMat(points1, points2, FM_RANSAC, ransacReprojThreshold, confidence);
+    else if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "lmeds"))
+        fundamental_matrix = findFundamentalMat(points1, points2, FM_LMEDS, ransacReprojThreshold, confidence);
+    else if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "7point"))
+        fundamental_matrix = findFundamentalMat(points1, points2, FM_7POINT);
+    else if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "8point"))
+        fundamental_matrix = findFundamentalMat(points1, points2, FM_8POINT);
+    else{
+        std::cout << "Error: No such fundamental matrix method." << std::endl;
+        return Mat();
+    }
+    return fundamental_matrix;
+}
+
+void rectify_images(Mat img1, Mat img2, std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences, Mat fundamental_matrix){
+    std::vector<Point2f> points1, points2;
+    for(int i = 0; i < correspondences.size(); i++){
+        points1.push_back(keypoints1[correspondences[i].queryIdx].pt);
+        points2.push_back(keypoints2[correspondences[i].trainIdx].pt);   
+    }
+    if(points1.size() != points2.size() || points1.size() < 8){
+        std::cout << "Error: The number of points is not enough." << std::endl;
+        return;
+    }
+    Mat homography1, homography2;
+    double threshold = 5.0;
+    // TODO: the following function doesn't require intrinsic paramters, but we have intrinsic parameters to be used
+    if(!stereoRectifyUncalibrated(points1, points2, fundamental_matrix, img1.size(), homography1, homography2, threshold)){
+        std::cout << "Error: Failed to rectify images." << std::endl;
+        return;
+    }
+    Mat rectified1, rectified2;
+    // TODO: rectify images from caculate homography
+    warpPerspective(img1, rectified1, homography1, img1.size());
+    warpPerspective(img2, rectified2, homography2, img2.size());
+    return;
+}
+
+Mat compute_disparity_map(Mat left, Mat right) {
+    if (compare_string(MATCHING_METHOD, "bm")) {
+        int max_disp = 160, wsize = 15;
+        Ptr<StereoBM> left_matcher = StereoBM::create(max_disp, wsize);
+
+        Mat left_gray, right_gray, left_disp;
+        cvtColor(left, left_gray, COLOR_BGR2GRAY);
+        cvtColor(right, right_gray, COLOR_BGR2GRAY);
+
+        left_matcher->compute(left_gray, right_gray, left_disp);
+
+        /*
+        Mat left_disp_vis;
+        getDisparityVis(left_disp, left_disp_vis);
+        imshow("Left Disparity", left_disp_vis);
+        waitKey();
+        */
+        return left_disp;
+    }
+    else if (compare_string(MATCHING_METHOD, "sgbm")) {
+        int max_disp = 160, wsize = 3;
+        Ptr<StereoSGBM> left_matcher = StereoSGBM::create(0, max_disp, wsize);
+        left_matcher->setP1(24 * wsize * wsize);
+        left_matcher->setP2(96 * wsize * wsize);
+        left_matcher->setPreFilterCap(63);
+        left_matcher->setMode(StereoSGBM::MODE_SGBM_3WAY);
+
+        Mat left_gray, right_gray, left_disp;
+        cvtColor(left, left_gray, COLOR_BGR2GRAY);
+        cvtColor(right, right_gray, COLOR_BGR2GRAY);
+
+        left_matcher->compute(left_gray, right_gray, left_disp);
+        /*
+        Mat left_disp_vis;
+        getDisparityVis(left_disp, left_disp_vis);
+        imshow("Left Disparity", left_disp_vis);
+        waitKey();
+        */
+        return left_disp;
+    }
+}
+
+Mat get_depth_map_from_disparity_map(const cv::Mat &disparityMap, const float baseline, const float fx) {
+    cv::Mat depthMap = cv::Mat(disparityMap.size(), CV_16U);
+    for (int i = 0; i < disparityMap.rows; i++) {
+        for (int j = 0; j < disparityMap.cols; j++) {
+            double d = static_cast<double>(disparityMap.at<float>(i, j));
+            depthMap.at<unsigned short>(i, j) = (baseline * fx) / d;
+            // depthMap.at<unsigned short>(i, j) = d;
+            // if (d < 10)
+            //     depthMap.at<unsigned short>(i, j) = -1;
+            // if (d>0) std::cout << "The disparity is: "<< (baseline * fx) / d<< std::endl;
+            short disparity_ij = disparityMap.at<unsigned short>(i, j);
+            if(disparity_ij <= 1)
+                depthMap.at<unsigned short>(i, j) = 0;
+
+            if (std::isnan(depthMap.at<unsigned short>(i, j)) || std::isinf(depthMap.at<unsigned short>(i, j)))
+                depthMap.at<unsigned short>(i, j) = 0;
+        }
+    }
+
+    return depthMap;
+}
+
+void get_point_cloud_from_depth_map(cv::Mat depth_map, int file_order = 0){
+    float fX = 577.871;
+    float fY = 580.258;
+    float cX = 319.623;
+    float cY = 239.624; 
+
+    int width = depth_map.cols;
+    int height = depth_map.rows;
+
+    Vertex* vertices = new Vertex[width*height];
+    for(int h = 0; h < height; h++){
+        for(int w = 0; w < width; w++){
+            int idx = h * width + w;
+            // float depth = *(depthMap + idx);
+            float depth = (float)(depth_map.at<short>(h,w)); 
+            depth = depth;
+            if(depth != MINF && depth != 0 && depth < 100){ // range filter: (0, 1 meter)
+                float X_c = (float(w)-cX) * depth / fX;
+                float Y_c = (float(h)-cY) * depth / fY;
+                Vector4f P_c = Vector4f(X_c, Y_c, depth, 1);
+
+                vertices[idx].position = P_c;
+                /*
+                unsigned char R = rgb_map.at<Vec3b>(h,w)[2];
+                unsigned char G = rgb_map.at<Vec3b>(h,w)[1];
+                unsigned char B = rgb_map.at<Vec3b>(h,w)[0];
+                unsigned char A = 255;
+                vertices[idx].color = Vector4uc(R, G, B, A); */
+            }
+            else{
+                vertices[idx].position = Vector4f(MINF, MINF, MINF, MINF);
+                vertices[idx].color = Vector4uc(0, 0, 0, 0);
+            }
+        }
+    }
+    /*
+    // write to the off file
+    std::stringstream ss;
+    ss << "bricks_rgbd" << file_order <<".off";
+    WriteMesh(vertices, width, height, ss.str());
+    */
+}
+
+bool icp_reconstruct(const std::string base_model, const std::string other_model, std::string& target_model){   
     SimpleMesh sourceMesh;
 	if (!sourceMesh.loadMesh(base_model)) {
 		std::cout << "Mesh file wasn't read successfully at location: " << base_model << std::endl;
@@ -359,118 +458,26 @@ bool icp_reconstruct(const std::string base_model, const std::string other_model
 	return true;
 }    
 
-Mat compute_disparity_map(Mat left, Mat right) {
-    if (compare_string(MATCHING_METHOD, "bm")) {
-        int max_disp = 160, wsize = 15;
-        Ptr<StereoBM> left_matcher = StereoBM::create(max_disp, wsize);
-
-        Mat left_gray, right_gray, left_disp;
-        cvtColor(left, left_gray, COLOR_BGR2GRAY);
-        cvtColor(right, right_gray, COLOR_BGR2GRAY);
-
-        left_matcher->compute(left_gray, right_gray, left_disp);
-
-        /*
-        Mat left_disp_vis;
-        getDisparityVis(left_disp, left_disp_vis);
-        imshow("Left Disparity", left_disp_vis);
-        waitKey();
-        */
-
-        return left_disp;
-    }
-    else if (compare_string(MATCHING_METHOD, "sgbm")) {
-        int max_disp = 160, wsize = 3;
-        Ptr<StereoSGBM> left_matcher = StereoSGBM::create(0, max_disp, wsize);
-        left_matcher->setP1(24 * wsize * wsize);
-        left_matcher->setP2(96 * wsize * wsize);
-        left_matcher->setPreFilterCap(63);
-        left_matcher->setMode(StereoSGBM::MODE_SGBM_3WAY);
-
-        Mat left_gray, right_gray, left_disp;
-        cvtColor(left, left_gray, COLOR_BGR2GRAY);
-        cvtColor(right, right_gray, COLOR_BGR2GRAY);
-
-        left_matcher->compute(left_gray, right_gray, left_disp);
-
-        /*
-        Mat left_disp_vis;
-        getDisparityVis(left_disp, left_disp_vis);
-        imshow("Left Disparity", left_disp_vis);
-        waitKey();
-        */
-
-        return left_disp;
-    }
-
-}
-
-void PointCloudGenerate(cv::Mat depth_map, int file_order = 0){
-    /*
-    if(dataset.name!=bricks_rgbd){
-        cout<<"dataset error from pointcloud.cpp!"<<endl;
-        exit(0);
-    }*/
-    float fX = 577.871;
-    float fY = 580.258;
-    float cX = 319.623;
-    float cY = 239.624; 
-
-    int width = depth_map.cols;
-    int height = depth_map.rows;
-
-    Vertex* vertices = new Vertex[width*height];
-    for(int h = 0; h < height; h++){
-        for(int w = 0; w < width; w++){
-            int idx = h * width + w;
-            // float depth = *(depthMap + idx);
-            float depth = (float)(depth_map.at<short>(h,w)); 
-            depth = depth;
-            if(depth != MINF && depth != 0 && depth < 100){ // range filter: (0, 1 meter)
-                float X_c = (float(w)-cX) * depth / fX;
-                float Y_c = (float(h)-cY) * depth / fY;
-                Vector4f P_c = Vector4f(X_c, Y_c, depth, 1);
-
-                vertices[idx].position = P_c;
-                /*
-                unsigned char R = rgb_map.at<Vec3b>(h,w)[2];
-                unsigned char G = rgb_map.at<Vec3b>(h,w)[1];
-                unsigned char B = rgb_map.at<Vec3b>(h,w)[0];
-                unsigned char A = 255;
-                vertices[idx].color = Vector4uc(R, G, B, A); */
+void reconstruct(std::string models_directory){
+    DIR* directory = opendir(models_directory.c_str());
+    struct dirent* entry;
+    int index = 0;
+    std::string base_model, target_model, other_model;
+    while(directory != NULL){
+        while((entry = readdir(directory)) != NULL){
+            if(index == 0){
+                base_model = models_directory + std::string(entry->d_name);
+                index++;
+                continue;
             }
-            else{
-                vertices[idx].position = Vector4f(MINF, MINF, MINF, MINF);
-                vertices[idx].color = Vector4uc(0, 0, 0, 0);
+            other_model = models_directory + std::string(entry->d_name);
+            target_model = models_directory + std::to_string(index) + ".off";
+            if(!icp_reconstruct(base_model, other_model, target_model)){
+                std::cout << "Error: Failed to reconstruct model. Skipped one model: " + base_model << std::endl;
+                base_model = other_model;
             }
-        }
+            else base_model = target_model;
+            index++;
+        }   
     }
-    /*
-    // write to the off file
-    std::stringstream ss;
-    ss << "bricks_rgbd" << file_order <<".off";
-    WriteMesh(vertices, width, height, ss.str());
-    */
-}
-
-cv::Mat convertDisparityToDepth(const cv::Mat &disparityMap, const float baseline, const float fx) {
-    cv::Mat depthMap = cv::Mat(disparityMap.size(), CV_16U);
-    for (int i = 0; i < disparityMap.rows; i++) {
-        for (int j = 0; j < disparityMap.cols; j++) {
-            double d = static_cast<double>(disparityMap.at<float>(i, j));
-            depthMap.at<unsigned short>(i, j) = (baseline * fx) / d;
-            // depthMap.at<unsigned short>(i, j) = d;
-            // if (d < 10)
-            //     depthMap.at<unsigned short>(i, j) = -1;
-            // if (d>0) std::cout << "The disparity is: "<< (baseline * fx) / d<< std::endl;
-            short disparity_ij = disparityMap.at<unsigned short>(i, j);
-            if(disparity_ij <= 1)
-                depthMap.at<unsigned short>(i, j) = 0;
-
-            if (std::isnan(depthMap.at<unsigned short>(i, j)) || std::isinf(depthMap.at<unsigned short>(i, j)))
-                depthMap.at<unsigned short>(i, j) = 0;
-        }
-    }
-
-    return depthMap;
 }
