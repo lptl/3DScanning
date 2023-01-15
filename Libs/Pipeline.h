@@ -1,63 +1,62 @@
 #pragma once
 
 #include <iostream>
-#include <fstream>
 #include <array>
 
 #include <dirent.h>
 
-#include "OpenCVLib.h"
 #include "Utils.h"
 
 #define DESCRIPTOR_METHOD "brisk" // harris, sift, surf, orb, brisk
 #define DESCRIPTOR_MATCHING_METHOD "brute_force" // flann, brute_force
 #define FUNDAMENTAL_MATRIX_METHOD "ransac" // ransac, lmeds, 7point, 8point
-#define MATCHING_METHOD "bm" // bm, sgbm
+#define DENSE_MATCHING_METHOD "sgbm" // bm, sgbm
 
 using namespace cv;
-using namespace xfeatures2d;
-using namespace ximgproc;
-using namespace Eigen;
+using namespace cv::xfeatures2d;
+using namespace cv::ximgproc;
 
-std::string PROJECT_PATH = "/Users/k/Desktop/courses/3dscanning/3DScanning/";
+std::string PROJECT_PATH = "../../";
 
-std::vector<std::string> rectify_images(Mat img1, std::string filename1, Mat img2, std::string filename2, std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences, Mat fundamental_matrix){
-    std::vector<Point2f> points1, points2;
-    for(int i = 0; i < correspondences.size(); i++){
-        points1.push_back(keypoints1[correspondences[i].queryIdx].pt);
-        points2.push_back(keypoints2[correspondences[i].trainIdx].pt);   
+void rectify_images(Mat img1, Mat img2, std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> good_matches, Mat fundamental_matrix, struct intrinsics intrs, Mat &left_rectified, Mat &right_rectified){
+    
+    if (!intrs.empty) {
+        Mat R1, R2, P1, P2, Q;
+        stereoRectify(intrs.left_camera_matrix, intrs.left_distortion_coeffs, intrs.right_camera_matrix, intrs.right_distortion_coeffs, img1.size(), intrs.left_to_right_R, intrs.left_to_right_T, R1, R2, P1, P2, Q);
+
+        Mat rmap[2][2];
+        initUndistortRectifyMap(intrs.left_camera_matrix, intrs.left_distortion_coeffs, R1, P1, img1.size(), CV_16SC2, rmap[0][0], rmap[0][1]);
+        initUndistortRectifyMap(intrs.right_camera_matrix, intrs.right_distortion_coeffs, R2, P2, img1.size(), CV_16SC2, rmap[1][0], rmap[1][1]);
+
+        remap(img1, left_rectified, rmap[0][0], rmap[0][1], INTER_LINEAR);
+        remap(img2, right_rectified, rmap[1][0], rmap[1][1], INTER_LINEAR);
     }
-    if(points1.size() != points2.size() || points1.size() < 8){
-        std::cout << "Error: The number of points is not enough." << std::endl;
-        return {};
+    else {
+        std::vector<Point2f> points1, points2;
+        for (int i = 0; i < good_matches.size(); i++) {
+            points1.push_back(keypoints1[good_matches[i].queryIdx].pt);
+            points2.push_back(keypoints2[good_matches[i].trainIdx].pt);
+        }
+        if (points1.size() != points2.size() || points1.size() < 8) {
+            std::cout << "Error: The number of points is not enough." << std::endl;
+            return;
+        }
+
+        Mat homography1, homography2;
+        double threshold = 5.0;
+        if (!stereoRectifyUncalibrated(points1, points2, fundamental_matrix, img1.size(), homography1, homography2, threshold)) {
+            std::cout << "Error: Failed to rectify images." << std::endl;
+            return;
+        }
+        
+        warpPerspective(img1, left_rectified, homography1, img1.size());
+        warpPerspective(img2, right_rectified, homography2, img2.size());
     }
-    Mat homography1, homography2;
-    double threshold = 5.0;
-    // TODO: the following function doesn't require intrinsic paramters, but we have intrinsic parameters to be used
-    if(!stereoRectifyUncalibrated(points1, points2, fundamental_matrix, img1.size(), homography1, homography2, threshold)){
-        std::cout << "Error: Failed to rectify images." << std::endl;
-        return {};
-    }
-    Mat rectified1, rectified2;
-    struct filenameType img1_name = extract_file_name(filename1);
-    struct filenameType img2_name = extract_file_name(filename2);
-    std::vector<std::string> outfiles;
-
-    // TODO: rectify images
-    warpPerspective(img1, rectified1, homography1, img1.size());
-    std::string outfile1 = PROJECT_PATH + "rectified_left/" + std::to_string(img1_name.number) + ".png";
-    imwrite(outfile1, rectified1);
-    outfiles.push_back(outfile1);
-
-    warpPerspective(img2, rectified2, homography2, img2.size());
-    std::string outfile2 = PROJECT_PATH + "rectified_right/" + std::to_string(img2_name.number) + ".png";
-    imwrite(outfile2, rectified2);
-    outfiles.push_back(outfile2);
-
-    return outfiles;
+    
+    return;
 }
 
-Mat find_fundamental_matrix(std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences){
+void find_fundamental_matrix(std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> correspondences, Mat &fundamental_matrix){
     std::vector<Point2f> points1, points2;
     for(int i = 0; i < correspondences.size(); i++){
         points1.push_back(keypoints1[correspondences[i].queryIdx].pt);
@@ -65,9 +64,9 @@ Mat find_fundamental_matrix(std::vector<KeyPoint> keypoints1, std::vector<KeyPoi
     }
     if(points1.size() != points2.size() || points1.size() < 8){
         std::cout << "Error: The number of points is not enough." << std::endl;
-        return Mat();
+        return;
     }
-    Mat fundamental_matrix;
+
     double ransacReprojThreshold = 3.0, confidence = 0.99;
     if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "ransac"))
         fundamental_matrix = findFundamentalMat(points1, points2, FM_RANSAC, ransacReprojThreshold, confidence);
@@ -79,15 +78,14 @@ Mat find_fundamental_matrix(std::vector<KeyPoint> keypoints1, std::vector<KeyPoi
         fundamental_matrix = findFundamentalMat(points1, points2, FM_8POINT);
     else{
         std::cout << "Error: No such fundamental matrix method." << std::endl;
-        return Mat();
+        return;
     }
-    return fundamental_matrix;
+    return;
 }
 
-std::vector<DMatch> match_descriptors(Mat img1, Mat img2, struct detectResult result1, struct detectResult result2){
-    Mat descriptors1 = result1.descriptors, descriptors2 = result2.descriptors;
-    std::vector<KeyPoint> keypoints1 = result1.keypoints, keypoints2 = result2.keypoints;
+void match_descriptors(Mat descriptors1, Mat descriptors2, std::vector<DMatch> &good_matches){
     std::vector<std::vector<DMatch>> correspondences;
+
     if(compare_string(DESCRIPTOR_MATCHING_METHOD, "flann")){
         Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);
         // the knn use NORM_L2 because sift is a float-pointing descriptor
@@ -104,19 +102,18 @@ std::vector<DMatch> match_descriptors(Mat img1, Mat img2, struct detectResult re
         std::cout << "Error: No such matching method." << std::endl;
         exit(-1);
     }
+
     const float ratio_thresh = 0.7f;
-    std::vector<DMatch> good_matches;
     for (size_t i = 0; i < correspondences.size(); i++){
         if (correspondences[i][0].distance < ratio_thresh * correspondences[i][1].distance)
             good_matches.push_back(correspondences[i][0]);
     }
-    Mat img_matches;
-    drawMatches(img1, keypoints1, img2, keypoints2, good_matches, img_matches, Scalar::all(-1), Scalar::all(-1), std::vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
-    imwrite(PROJECT_PATH + "descriptor_match/" + std::to_string(result1.filetype.number) + "-" + std::to_string(result2.filetype.number) + ".png", img_matches);
-    return good_matches;
+    
+    return;
 }
 
-struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::string img_name, Mat img){
+void detect_keypoints_or_features(std::string img_name, Mat img, struct detectResult *result){
+
     if(compare_string(DESCRIPTOR_METHOD, "harris")) {
         int blocksize = 2, aperture_size = 3, thresh = 200;
         double k = 0.04;
@@ -142,16 +139,16 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
         // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
         // imwrite(PROJECT_PATH + "harris_corner_unlabeled/" + img_name, distance_norm);
         // https://docs.opencv.org/3.4/d4/d7d/tutorial_harris_detector.html
-        struct detectResult result;
-        result.keypoints = keypoints;
+
+        result->keypoints = keypoints;
         int nfeatures = 0, nOctaveLayers = 3;
         double contrastThreshold = 0.04, edgeThreshold = 10, sigma = 1.6;
         Ptr<SIFT> sift_detector = SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
         Mat descriptors;
         sift_detector->compute(img, keypoints, descriptors);
-        result.descriptors = descriptors; // TODO: use the sift descriptor for every keypoint detecting method
-        result.filetype = extract_file_name(img_name);
-        return result;
+        result->descriptors = descriptors; // TODO: use the sift descriptor for every keypoint detecting method
+        result->filetype = extract_file_name(img_name);
+        return;
     }
     else if(compare_string(DESCRIPTOR_METHOD, "sift")) {
         int nfeatures = 0, nOctaveLayers = 3;
@@ -164,11 +161,11 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
         // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
         // imwrite(PROJECT_PATH + "sift/" + img_name, keypoints_on_image);
         // https://docs.opencv.org/3.4/d7/d66/tutorial_feature_detection.html 
-        struct detectResult result;
-        result.keypoints = keypoints;
-        result.descriptors = descriptors;
-        result.filetype = extract_file_name(img_name);
-        return result;
+
+        result->keypoints = keypoints;
+        result->descriptors = descriptors;
+        result->filetype = extract_file_name(img_name);
+        return;
     }
     else if(compare_string(DESCRIPTOR_METHOD, "surf")) {
         // std::cout << "detecting surf keypoints and descriptors" << std::endl;
@@ -181,11 +178,11 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
         // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
         // imwrite(PROJECT_PATH + "surf/" + img_name, keypoints_on_image);
         // https://docs.opencv.org/3.4/d7/d66/tutorial_feature_detection.html 
-        struct detectResult result;
-        result.keypoints = keypoints;
-        result.descriptors = descriptors;
-        result.filetype = extract_file_name(img_name);
-        return result;
+
+        result->keypoints = keypoints;
+        result->descriptors = descriptors;
+        result->filetype = extract_file_name(img_name);
+        return;
     }
     else if(compare_string(DESCRIPTOR_METHOD, "orb")) {
         // std::cout << "detecting orb keypoints and descriptors" << std::endl;
@@ -205,11 +202,11 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
         // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
         // imwrite(PROJECT_PATH + "orb/" + img_name, keypoints_on_image);
         // https://docs.opencv.org/3.4/d7/d66/tutorial_feature_detection.html 
-        struct detectResult result;
-        result.keypoints = keypoints;
-        result.descriptors = descriptors;
-        result.filetype = extract_file_name(img_name);
-        return result;
+
+        result->keypoints = keypoints;
+        result->descriptors = descriptors;
+        result->filetype = extract_file_name(img_name);
+        return;
     }
     else if(compare_string(DESCRIPTOR_METHOD, "brisk")) {
         int thresh = 30;
@@ -223,11 +220,11 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
         // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
         // imwrite(PROJECT_PATH + "brisk/" + img_name, keypoints_on_image);
         // https://docs.opencv.org/3.4/d7/d66/tutorial_feature_detection.html 
-        struct detectResult result;
-        result.keypoints = keypoints;
-        result.descriptors = descriptors;
-        result.filetype = extract_file_name(img_name);
-        return result;
+
+        result->keypoints = keypoints;
+        result->descriptors = descriptors;
+        result->filetype = extract_file_name(img_name);
+        return;
     }
     else if (compare_string(DESCRIPTOR_METHOD, "shi-tomasi")) {
         std::vector<Point2f> corners;
@@ -267,12 +264,11 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
         Ptr<SIFT> siftDetector = SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
         Mat descriptors;
         siftDetector->compute(img, keypoints, descriptors);
-        
-        struct detectResult result;
-        result.keypoints = keypoints;
-        result.descriptors = descriptors;
-        result.filetype = extract_file_name(img_name);
-        return result;
+
+        result->keypoints = keypoints;
+        result->descriptors = descriptors;
+        result->filetype = extract_file_name(img_name);
+        return;
     }
     else if (compare_string(DESCRIPTOR_METHOD, "fast")) {
         Ptr<FastFeatureDetector> fastDetector = FastFeatureDetector::create();
@@ -296,29 +292,24 @@ struct detectResult detect_keypoints_or_features(std::string dataset_dir, std::s
         Mat descriptors;
         siftDetector->compute(img, keypoints, descriptors);
         
-        struct detectResult result;
-        result.keypoints = keypoints;
-        result.descriptors = descriptors;
-        result.filetype = extract_file_name(img_name);
-        return result;
+        result->keypoints = keypoints;
+        result->descriptors = descriptors;
+        result->filetype = extract_file_name(img_name);
+        return;
     }
-    struct detectResult result;
-    return result;
+    return;
 }
 
-Mat compute_disparity_map(std::string left_filename, std::string right_filename) {
-    Mat left = imread(left_filename);
-    Mat right = imread(right_filename);
-
-    if (compare_string(MATCHING_METHOD, "bm")) {
+void compute_disparity_map(Mat left, Mat right, Mat &disp) {
+    if (compare_string(DENSE_MATCHING_METHOD, "bm")) {
         int max_disp = 160, wsize = 15;
         Ptr<StereoBM> left_matcher = StereoBM::create(max_disp, wsize);
 
-        Mat left_gray, right_gray, left_disp;
+        Mat left_gray, right_gray;
         cvtColor(left, left_gray, COLOR_BGR2GRAY);
         cvtColor(right, right_gray, COLOR_BGR2GRAY);
 
-        left_matcher->compute(left_gray, right_gray, left_disp);
+        left_matcher->compute(left_gray, right_gray, disp);
 
         /*
         Mat left_disp_vis;
@@ -327,9 +318,9 @@ Mat compute_disparity_map(std::string left_filename, std::string right_filename)
         waitKey();
         */
 
-        return left_disp;
+        return;
     }
-    else if (compare_string(MATCHING_METHOD, "sgbm")) {
+    else if (compare_string(DENSE_MATCHING_METHOD, "sgbm")) {
         int max_disp = 160, wsize = 3;
         Ptr<StereoSGBM> left_matcher = StereoSGBM::create(0, max_disp, wsize);
         left_matcher->setP1(24 * wsize * wsize);
@@ -337,11 +328,11 @@ Mat compute_disparity_map(std::string left_filename, std::string right_filename)
         left_matcher->setPreFilterCap(63);
         left_matcher->setMode(StereoSGBM::MODE_SGBM_3WAY);
 
-        Mat left_gray, right_gray, left_disp;
+        Mat left_gray, right_gray;
         cvtColor(left, left_gray, COLOR_BGR2GRAY);
         cvtColor(right, right_gray, COLOR_BGR2GRAY);
 
-        left_matcher->compute(left_gray, right_gray, left_disp);
+        left_matcher->compute(left_gray, right_gray, disp);
 
         /*
         Mat left_disp_vis;
@@ -350,79 +341,7 @@ Mat compute_disparity_map(std::string left_filename, std::string right_filename)
         waitKey();
         */
 
-        return left_disp;
-    }
-}
-
-Mat convert_disparity_to_depth(const Mat& disparityMap) {
-    const float baseline = 10.0;
-    const float fx = 10.0;
-    Mat depthMap = Mat(disparityMap.size(), CV_16U);
-    for (int i = 0; i < disparityMap.rows; i++) {
-        for (int j = 0; j < disparityMap.cols; j++) {
-            double d = static_cast<double>(disparityMap.at<float>(i, j));
-            depthMap.at<unsigned short>(i, j) = (baseline * fx) / d;
-            // depthMap.at<unsigned short>(i, j) = d;
-            // if (d < 10)
-            //     depthMap.at<unsigned short>(i, j) = -1;
-            // if (d>0) std::cout << "The disparity is: "<< (baseline * fx) / d<< std::endl;
-            short disparity_ij = disparityMap.at<unsigned short>(i, j);
-            if (disparity_ij <= 1)
-                depthMap.at<unsigned short>(i, j) = 0;
-
-            if (std::isnan(depthMap.at<unsigned short>(i, j)) || std::isinf(depthMap.at<unsigned short>(i, j)))
-                depthMap.at<unsigned short>(i, j) = 0;
-        }
+        return;
     }
 
-    return depthMap;
-}
-
-void point_cloud_generate(Mat depth_map) {
-    /*
-    if(dataset.name!=bricks_rgbd){
-        cout<<"dataset error from pointcloud.cpp!"<<endl;
-        exit(0);
-    }*/
-    float fX = 577.871;
-    float fY = 580.258;
-    float cX = 319.623;
-    float cY = 239.624;
-
-    int width = depth_map.cols;
-    int height = depth_map.rows;
-
-    Vertex* vertices = new Vertex[width * height];
-    for (int h = 0; h < height; h++) {
-        for (int w = 0; w < width; w++) {
-            int idx = h * width + w;
-            // float depth = *(depthMap + idx);
-            float depth = (float)(depth_map.at<short>(h, w));
-            depth = depth;
-            if (depth != MINF && depth != 0 && depth < 100) { // range filter: (0, 1 meter)
-                float X_c = (float(w) - cX) * depth / fX;
-                float Y_c = (float(h) - cY) * depth / fY;
-                Vector4f P_c = Vector4f(X_c, Y_c, depth, 1);
-
-                vertices[idx].position = P_c;
-                /*
-                unsigned char R = rgb_map.at<Vec3b>(h,w)[2];
-                unsigned char G = rgb_map.at<Vec3b>(h,w)[1];
-                unsigned char B = rgb_map.at<Vec3b>(h,w)[0];
-                unsigned char A = 255;
-                vertices[idx].color = Vector4uc(R, G, B, A); */
-            }
-            else {
-                vertices[idx].position = Vector4f(MINF, MINF, MINF, MINF);
-                //vertices[idx].color = Vector4uc(0, 0, 0, 0);
-            }
-        }
-    }
-    
-    /*
-    // write to the off file
-    std::stringstream ss;
-    ss << "bricks_rgbd" << file_order << ".off";
-    WriteMesh(vertices, width, height, ss.str());
-    */
 }

@@ -14,10 +14,6 @@ add_definitions("-D_DISABLE_EXTENDED_ALIGNED_STORAGE")
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
 
-set(HEADER_FILES 
-    Libs/Eigen.h
-)
-
 add_executable(StereoReconstruction main.cpp ${HEADER_FILES})
 target_include_directories(StereoReconstruction PUBLIC ${EIGEN3_INCLUDE_DIR} ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(StereoReconstruction ${EIGEN3_LIBS} ${OpenCV_LIBS})
