@@ -16,16 +16,16 @@ using namespace cv::ximgproc;
 
 std::string PROJECT_PATH = "../../";
 
-void rectify_images(Mat img1, Mat img2, std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> good_matches, Mat fundamental_matrix, struct intrinsics intrs, Mat &left_rectified, Mat &right_rectified){
+void rectify_images(Mat img1, Mat img2, std::vector<KeyPoint> keypoints1, std::vector<KeyPoint> keypoints2, std::vector<DMatch> good_matches, Mat fundamental_matrix, struct cameraParams camParams, Mat &left_rectified, Mat &right_rectified){
     
-    if (!intrs.empty) {
+    if (!camParams.empty) {
         Mat R1, R2, P1, P2, Q;
         // TODO: Currently this should give the ground-truth rectified images. For rectified images based on our method, decompose the fundamental matrix into R and T and pass those here (instead of left_to_right_R and left_to_right_T respectively)
-        stereoRectify(intrs.left_camera_matrix, intrs.left_distortion_coeffs, intrs.right_camera_matrix, intrs.right_distortion_coeffs, img1.size(), intrs.left_to_right_R, intrs.left_to_right_T, R1, R2, P1, P2, Q);
+        stereoRectify(camParams.left_camera_matrix, camParams.left_distortion_coeffs, camParams.right_camera_matrix, camParams.right_distortion_coeffs, img1.size(), camParams.left_to_right_R, camParams.left_to_right_T, R1, R2, P1, P2, Q);
 
         Mat rmap[2][2];
-        initUndistortRectifyMap(intrs.left_camera_matrix, intrs.left_distortion_coeffs, R1, P1, img1.size(), CV_16SC2, rmap[0][0], rmap[0][1]);
-        initUndistortRectifyMap(intrs.right_camera_matrix, intrs.right_distortion_coeffs, R2, P2, img1.size(), CV_16SC2, rmap[1][0], rmap[1][1]);
+        initUndistortRectifyMap(camParams.left_camera_matrix, camParams.left_distortion_coeffs, R1, P1, img1.size(), CV_16SC2, rmap[0][0], rmap[0][1]);
+        initUndistortRectifyMap(camParams.right_camera_matrix, camParams.right_distortion_coeffs, R2, P2, img1.size(), CV_16SC2, rmap[1][0], rmap[1][1]);
 
         remap(img1, left_rectified, rmap[0][0], rmap[0][1], INTER_LINEAR);
         remap(img2, right_rectified, rmap[1][0], rmap[1][1], INTER_LINEAR);
@@ -147,7 +147,6 @@ void detect_keypoints_or_features(std::string img_name, Mat img, struct detectRe
         sift_detector->compute(img, keypoints, descriptors);
         result->descriptors = descriptors; // TODO: use the sift descriptor for every keypoint detecting method
         result->filetype = extract_file_name(img_name);
-        return;
     }
     else if(compare_string(DESCRIPTOR_METHOD, "sift")) {
         int nfeatures = 0, nOctaveLayers = 3;
@@ -164,7 +163,6 @@ void detect_keypoints_or_features(std::string img_name, Mat img, struct detectRe
         result->keypoints = keypoints;
         result->descriptors = descriptors;
         result->filetype = extract_file_name(img_name);
-        return;
     }
     else if(compare_string(DESCRIPTOR_METHOD, "surf")) {
         // std::cout << "detecting surf keypoints and descriptors" << std::endl;
@@ -181,7 +179,6 @@ void detect_keypoints_or_features(std::string img_name, Mat img, struct detectRe
         result->keypoints = keypoints;
         result->descriptors = descriptors;
         result->filetype = extract_file_name(img_name);
-        return;
     }
     else if(compare_string(DESCRIPTOR_METHOD, "orb")) {
         // std::cout << "detecting orb keypoints and descriptors" << std::endl;
@@ -205,7 +202,6 @@ void detect_keypoints_or_features(std::string img_name, Mat img, struct detectRe
         result->keypoints = keypoints;
         result->descriptors = descriptors;
         result->filetype = extract_file_name(img_name);
-        return;
     }
     else if(compare_string(DESCRIPTOR_METHOD, "brisk")) {
         int thresh = 30;
@@ -223,7 +219,6 @@ void detect_keypoints_or_features(std::string img_name, Mat img, struct detectRe
         result->keypoints = keypoints;
         result->descriptors = descriptors;
         result->filetype = extract_file_name(img_name);
-        return;
     }
     else if (compare_string(DESCRIPTOR_METHOD, "shi-tomasi")) {
         std::vector<Point2f> corners;
@@ -267,7 +262,6 @@ void detect_keypoints_or_features(std::string img_name, Mat img, struct detectRe
         result->keypoints = keypoints;
         result->descriptors = descriptors;
         result->filetype = extract_file_name(img_name);
-        return;
     }
     else if (compare_string(DESCRIPTOR_METHOD, "fast")) {
         Ptr<FastFeatureDetector> fastDetector = FastFeatureDetector::create();
@@ -294,21 +288,27 @@ void detect_keypoints_or_features(std::string img_name, Mat img, struct detectRe
         result->keypoints = keypoints;
         result->descriptors = descriptors;
         result->filetype = extract_file_name(img_name);
-        return;
+    }
+    else {
+        std::cout << "No such keypoint/descriptor method." << std::endl;
     }
     return;
 }
 
 void compute_disparity_map(Mat left, Mat right, Mat &disp) {
+    
+    Ptr<DisparityWLSFilter> wls_filter;
+    Mat left_gray, right_gray, left_disp, right_disp;
+    cvtColor(left, left_gray, COLOR_BGR2GRAY);
+    cvtColor(right, right_gray, COLOR_BGR2GRAY);
+
     if (compare_string(DENSE_MATCHING_METHOD, "bm")) {
         int max_disp = 160, wsize = 15;
         Ptr<StereoBM> left_matcher = StereoBM::create(max_disp, wsize);
+        Ptr<StereoMatcher> right_matcher = createRightMatcher(left_matcher);
 
-        Mat left_gray, right_gray;
-        cvtColor(left, left_gray, COLOR_BGR2GRAY);
-        cvtColor(right, right_gray, COLOR_BGR2GRAY);
-
-        left_matcher->compute(left_gray, right_gray, disp);
+        left_matcher->compute(left_gray, right_gray, left_disp);
+        right_matcher->compute(right_gray, left_gray, right_disp);
 
         /*
         Mat left_disp_vis;
@@ -317,7 +317,8 @@ void compute_disparity_map(Mat left, Mat right, Mat &disp) {
         waitKey();
         */
 
-        return;
+        wls_filter = createDisparityWLSFilter(left_matcher);
+
     }
     else if (compare_string(DENSE_MATCHING_METHOD, "sgbm")) {
         int max_disp = 160, wsize = 3;
@@ -326,12 +327,10 @@ void compute_disparity_map(Mat left, Mat right, Mat &disp) {
         left_matcher->setP2(96 * wsize * wsize);
         left_matcher->setPreFilterCap(63);
         left_matcher->setMode(StereoSGBM::MODE_SGBM_3WAY);
+        Ptr<StereoMatcher> right_matcher = createRightMatcher(left_matcher);
 
-        Mat left_gray, right_gray;
-        cvtColor(left, left_gray, COLOR_BGR2GRAY);
-        cvtColor(right, right_gray, COLOR_BGR2GRAY);
-
-        left_matcher->compute(left_gray, right_gray, disp);
+        left_matcher->compute(left_gray, right_gray, left_disp);
+        right_matcher->compute(right_gray, left_gray, right_disp);
 
         /*
         Mat left_disp_vis;
@@ -340,7 +339,19 @@ void compute_disparity_map(Mat left, Mat right, Mat &disp) {
         waitKey();
         */
 
+        wls_filter = createDisparityWLSFilter(left_matcher);
+
+    }
+    else {
+        std::cout << "No such dense matching method." << std::endl;
         return;
     }
 
+    double lambda = 8000.0, sigma = 1.5;
+    wls_filter->setLambda(lambda);
+    wls_filter->setSigmaColor(sigma);
+
+    wls_filter->filter(left_disp, left, disp, right_disp);
+
+    return;
 }

@@ -14,7 +14,7 @@ struct detectResult {
     struct filenameType filetype;
 };
 
-struct intrinsics {
+struct cameraParams {
     cv::Mat left_camera_matrix;
     cv::Mat left_distortion_coeffs;
     

@@ -50,7 +50,7 @@ bool compare_string(std::string str1, std::string str2){
         return false;
 }
 
-void getIntrinsics(std::string calib_file, struct intrinsics *intrs) {
+void getCameraParams(std::string calib_file, struct cameraParams *camParams) {
     std::ifstream infile(calib_file);
     std::string line;
 
@@ -72,14 +72,14 @@ void getIntrinsics(std::string calib_file, struct intrinsics *intrs) {
                     iss >> left_cam.at<double>(i, j);
                 }
             }
-            intrs->left_camera_matrix = left_cam;
+            camParams->left_camera_matrix = left_cam;
         }
         else if (compare_string(param, "D_02:")) {
             cv::Mat left_distort(5, 1, CV_64FC1, cv::Scalar::all(0));
             for (size_t i = 0; i < 5; i++) {
                 iss >> left_distort.at<double>(i, 0);
             }
-            intrs->left_distortion_coeffs = left_distort;
+            camParams->left_distortion_coeffs = left_distort;
         }
         else if (compare_string(param, "R_02:")) {
             for (size_t i = 0; i < 3; i++) {
@@ -100,14 +100,14 @@ void getIntrinsics(std::string calib_file, struct intrinsics *intrs) {
                     iss >> right_cam.at<double>(i, j);
                 }
             }
-            intrs->right_camera_matrix = right_cam;
+            camParams->right_camera_matrix = right_cam;
         }
         else if (compare_string(param, "D_03:")) {
             cv::Mat right_distort(5, 1, CV_64FC1, cv::Scalar::all(0));
             for (size_t i = 0; i < 5; i++) {
                 iss >> right_distort.at<double>(i, 0);
             }
-            intrs->right_distortion_coeffs = right_distort;
+            camParams->right_distortion_coeffs = right_distort;
         }
         else if (compare_string(param, "R_03:")) {
             for (size_t i = 0; i < 3; i++) {
@@ -126,9 +126,9 @@ void getIntrinsics(std::string calib_file, struct intrinsics *intrs) {
         }
     }
 
-    intrs->left_to_right_R = left_R.inv() * right_R;
-    intrs->left_to_right_T = right_T - left_T;
-    intrs->empty = true;
+    camParams->left_to_right_R = left_R.inv() * right_R;
+    camParams->left_to_right_T = right_T - left_T;
+    camParams->empty = true;
 
     return;
 }

@@ -5,7 +5,7 @@
 #define DATASET "kitti" // kitti, bricks-rgbd
 
 
-void process_pair_images(std::string filename1, std::string filename2, struct intrinsics intrs){
+void process_pair_images(std::string filename1, std::string filename2, struct cameraParams camParams){
     Mat left = imread(filename1, IMREAD_COLOR);
     Mat right = imread(filename2, IMREAD_COLOR);
     // TODO: calibrate image distortion if needed
@@ -41,20 +41,20 @@ void process_pair_images(std::string filename1, std::string filename2, struct in
     std::cout << "Finding fundamental matrix for images using " << FUNDAMENTAL_MATRIX_METHOD << std::endl;
     Mat fundamental_matrix;
     find_fundamental_matrix(result1.keypoints, result2.keypoints, good_matches, fundamental_matrix);
-    std::cout << fundamental_matrix << std::endl;
+    //std::cout << fundamental_matrix << std::endl;
 
     std::cout << "Rectifying images" << std::endl;
     Mat left_rectified, right_rectified;
-    rectify_images(left, right, result1.keypoints, result2.keypoints, good_matches, fundamental_matrix, intrs, left_rectified, right_rectified);
+    rectify_images(left, right, result1.keypoints, result2.keypoints, good_matches, fundamental_matrix, camParams, left_rectified, right_rectified);
     // save to file
-    imwrite(PROJECT_PATH + "Output/left_rectified/" + img1_name + ".png", left_rectified);
-    imwrite(PROJECT_PATH + "Output/right_rectified/" + img2_name + ".png", right_rectified);
+    imwrite(PROJECT_PATH + "Output/left_rectified/" + img1_name, left_rectified);
+    imwrite(PROJECT_PATH + "Output/right_rectified/" + img2_name, right_rectified);
     
     std::cout << "Computing disparity map for images using " << DENSE_MATCHING_METHOD << std::endl;
     Mat disp;
     compute_disparity_map(left_rectified, right_rectified, disp);
     // save to file
-    imwrite(PROJECT_PATH + "Output/disparity_maps/" + img1_name + ".png", disp);
+    imwrite(PROJECT_PATH + "Output/disparity_maps/" + img1_name, disp);
 
     std::cout << "Finished processing " << filename1 << " and " << filename2 << std::endl << std::endl;
     return;
@@ -71,22 +71,22 @@ int main()
             return -1;
         }
         else {
-            struct intrinsics intrs;
+            struct cameraParams camParams;
             while ((entry = readdir(directory)) != NULL) {
                 if (entry->d_name[0] != 'f')
                     continue;
                 struct filenameType filename_type = extract_file_name(entry->d_name);
                 if (filename_type.category != 0)
                     continue;
-                process_pair_images(dataset_dir + "/" + entry->d_name, dataset_dir + "/" + get_file_name(filename_type.number + 1, filename_type.category), intrs);
+                process_pair_images(dataset_dir + "/" + entry->d_name, dataset_dir + "/" + get_file_name(filename_type.number + 1, filename_type.category), camParams);
             }
         }
         closedir(directory);
     }
     else if (compare_string(DATASET, "kitti")) {
-        std::string left_dir = dataset_dir + "/data_scene_flow/training/image_2";
-        std::string right_dir = dataset_dir + "/data_scene_flow/training/image_3";
-        std::string calib_file = dataset_dir + "/data_scene_flow_calib/training/calib_cam_to_cam/000000.txt";
+        std::string left_dir = dataset_dir + "/data_scene_flow/training/image_2/";
+        std::string right_dir = dataset_dir + "/data_scene_flow/training/image_3/";
+        std::string calib_dir = dataset_dir + "/data_scene_flow_calib/training/calib_cam_to_cam/";
         DIR* directory = opendir(left_dir.c_str());
         struct dirent* entry;
         if (directory == NULL) {
@@ -94,19 +94,20 @@ int main()
             return -1;
         }
         else {
-            struct intrinsics intrs;
-            getIntrinsics(calib_file, &intrs);
-            //std::cout << intrs.left_camera_matrix << std::endl;
-            //std::cout << intrs.left_distortion_coeffs << std::endl;
-            //std::cout << intrs.right_camera_matrix << std::endl;
-            //std::cout << intrs.right_distortion_coeffs << std::endl;
-            //std::cout << intrs.left_to_right_R << std::endl;
-            //std::cout << intrs.left_to_right_T << std::endl;
-
             while ((entry = readdir(directory)) != NULL) {
                 if (entry->d_name[0] == '.')
                     continue;
-                process_pair_images(left_dir + "/" + entry->d_name, right_dir + "/" + entry->d_name, intrs);
+                std::string filename = entry->d_name;
+                std::string calib_file = calib_dir + filename.substr(filename.find_last_of("/") + 1, filename.find("_")) + ".txt";
+                struct cameraParams camParams;
+                getCameraParams(calib_file, &camParams);
+                //std::cout << camParams.left_camera_matrix << std::endl;
+                //std::cout << camParams.left_distortion_coeffs << std::endl;
+                //std::cout << camParams.right_camera_matrix << std::endl;
+                //std::cout << camParams.right_distortion_coeffs << std::endl;
+                std::cout << camParams.left_to_right_R << std::endl;
+                std::cout << camParams.left_to_right_T << std::endl;
+                process_pair_images(left_dir + filename, right_dir + filename, camParams);
             }
         }
         closedir(directory);
