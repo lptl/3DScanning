@@ -1,6 +1,3 @@
-#include <iostream>
-#include <fstream>
-#include <array>
 #include <dirent.h>
 
 #include "Libs/Pipeline.h"
@@ -59,7 +56,7 @@ void process_pair_images(std::string filename1, std::string filename2, struct in
     // save to file
     imwrite(PROJECT_PATH + "Output/disparity_maps/" + img1_name + ".png", disp);
 
-    std::cout << "Finished processing " << filename1 << " and " << filename2 << std::endl;
+    std::cout << "Finished processing " << filename1 << " and " << filename2 << std::endl << std::endl;
     return;
 }
 

@@ -126,7 +126,7 @@ void getIntrinsics(std::string calib_file, struct intrinsics *intrs) {
         }
     }
 
-    intrs->left_to_right_R = (right_R.inv() * left_R).t();
+    intrs->left_to_right_R = left_R.inv() * right_R;
     intrs->left_to_right_T = right_T - left_T;
     intrs->empty = true;
 

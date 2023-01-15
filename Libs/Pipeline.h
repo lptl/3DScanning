@@ -3,8 +3,6 @@
 #include <iostream>
 #include <array>
 
-#include <dirent.h>
-
 #include "Utils.h"
 
 #define DESCRIPTOR_METHOD "brisk" // harris, sift, surf, orb, brisk
@@ -22,6 +20,7 @@ void rectify_images(Mat img1, Mat img2, std::vector<KeyPoint> keypoints1, std::v
     
     if (!intrs.empty) {
         Mat R1, R2, P1, P2, Q;
+        // TODO: Currently this should give the ground-truth rectified images. For rectified images based on our method, decompose the fundamental matrix into R and T and pass those here (instead of left_to_right_R and left_to_right_T respectively)
         stereoRectify(intrs.left_camera_matrix, intrs.left_distortion_coeffs, intrs.right_camera_matrix, intrs.right_distortion_coeffs, img1.size(), intrs.left_to_right_R, intrs.left_to_right_T, R1, R2, P1, P2, Q);
 
         Mat rmap[2][2];
