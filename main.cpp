@@ -5,9 +5,10 @@
 #define DATASET "kitti" // kitti, bricks-rgbd
 
 
-void process_pair_images(std::string filename1, std::string filename2, struct cameraParams camParams){
-    Mat left = imread(filename1, IMREAD_COLOR);
-    Mat right = imread(filename2, IMREAD_COLOR);
+void process_pair_images(std::string filename1, std::string filename2, struct cameraParams camParams)
+{
+    cv::Mat left = imread(filename1, cv::IMREAD_COLOR);
+    cv::Mat right = imread(filename2, cv::IMREAD_COLOR);
     // TODO: calibrate image distortion if needed
     if(left.empty() || right.empty()){
         std::cout << "Error: Image not found or failed to open image." << std::endl;
@@ -31,30 +32,36 @@ void process_pair_images(std::string filename1, std::string filename2, struct ca
     */
     
     std::cout << "Matching descriptors for images using " << DESCRIPTOR_MATCHING_METHOD << std::endl;
-    std::vector<DMatch> good_matches;
+    std::vector<cv::DMatch> good_matches;
     match_descriptors(result1.descriptors, result2.descriptors, good_matches);
     // save to file
-    Mat img_matches;
-    drawMatches(left, result1.keypoints, right, result2.keypoints, good_matches, img_matches, Scalar::all(-1), Scalar::all(-1), std::vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
+    cv::Mat img_matches;
+    drawMatches(left, result1.keypoints, right, result2.keypoints, good_matches, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1), std::vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
     imwrite(PROJECT_PATH + "Output/descriptor_match/" + std::to_string(result1.filetype.number) + "-" + std::to_string(result2.filetype.number) + ".png", img_matches);
 
     std::cout << "Finding fundamental matrix for images using " << FUNDAMENTAL_MATRIX_METHOD << std::endl;
-    Mat fundamental_matrix;
+    cv::Mat fundamental_matrix;
     find_fundamental_matrix(result1.keypoints, result2.keypoints, good_matches, fundamental_matrix);
     //std::cout << fundamental_matrix << std::endl;
 
     std::cout << "Rectifying images" << std::endl;
-    Mat left_rectified, right_rectified;
+    cv::Mat left_rectified, right_rectified;
     rectify_images(left, right, result1.keypoints, result2.keypoints, good_matches, fundamental_matrix, camParams, left_rectified, right_rectified);
     // save to file
     imwrite(PROJECT_PATH + "Output/left_rectified/" + img1_name, left_rectified);
     imwrite(PROJECT_PATH + "Output/right_rectified/" + img2_name, right_rectified);
     
     std::cout << "Computing disparity map for images using " << DENSE_MATCHING_METHOD << std::endl;
-    Mat disp;
+    cv::Mat disp;
     compute_disparity_map(left_rectified, right_rectified, disp);
     // save to file
     imwrite(PROJECT_PATH + "Output/disparity_maps/" + img1_name, disp);
+
+    std::cout << "Generating point cloud" << std::endl;
+    cv::Mat depthMap = cv::Mat(disp.size(), CV_16U);
+    get_depth_map_from_disparity_map(disp, camParams, depthMap);
+    get_point_cloud_from_depth_map(depthMap, left_rectified, camParams, std::to_string(result1.filetype.number));
+
 
     std::cout << "Finished processing " << filename1 << " and " << filename2 << std::endl << std::endl;
     return;
@@ -100,17 +107,18 @@ int main()
                 std::string filename = entry->d_name;
                 std::string calib_file = calib_dir + filename.substr(filename.find_last_of("/") + 1, filename.find("_")) + ".txt";
                 struct cameraParams camParams;
-                getCameraParams(calib_file, &camParams);
+                getCameraParamsKITTI(calib_file, &camParams);
                 //std::cout << camParams.left_camera_matrix << std::endl;
                 //std::cout << camParams.left_distortion_coeffs << std::endl;
                 //std::cout << camParams.right_camera_matrix << std::endl;
                 //std::cout << camParams.right_distortion_coeffs << std::endl;
-                std::cout << camParams.left_to_right_R << std::endl;
-                std::cout << camParams.left_to_right_T << std::endl;
+                //std::cout << camParams.left_to_right_R << std::endl;
+                //std::cout << camParams.left_to_right_T << std::endl;
                 process_pair_images(left_dir + filename, right_dir + filename, camParams);
             }
         }
         closedir(directory);
+        reconstruct(MODELS_DIR);
     }
 
     std::cout << "Stereo Reconstruction Finished" << std::endl;

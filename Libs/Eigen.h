@@ -85,5 +85,4 @@ std::ostream &operator<<(std::ostream &out, const Eigen::Quaternion<T> &other)
 	std::fixed(out);
 	out << other.x() << "\t" << other.y() << "\t" << other.z() << "\t" << other.w();
 	return out;
-
 }

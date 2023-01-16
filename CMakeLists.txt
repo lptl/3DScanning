@@ -2,18 +2,39 @@ cmake_minimum_required(VERSION 3.6)
 
 project(StereoReconstruction)
 
-# Options
-set(LIBRARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../Libs CACHE PATH "Path to lib folder")
-set(Eigen3_DIR ${LIBRARY_DIR}/Eigen/share/eigen3/cmake CACHE PATH "Path to installed Eigen")
-
-# Set C++ flags
 set(CMAKE_CXX_STANDARD 14)
 
-add_definitions("-D_DISABLE_EXTENDED_ALIGNED_STORAGE")
+set(JPEG_LIB_VERSION 90)
 
-find_package(Eigen3 REQUIRED)
-find_package(OpenCV REQUIRED)
+find_package(Eigen3 CONFIG REQUIRED)
+find_package(Flann CONFIG REQUIRED)
+find_package(Ceres CONFIG REQUIRED)
+find_package(freeimage CONFIG REQUIRED)
+find_package(OpenCV CONFIG REQUIRED)
 
-add_executable(StereoReconstruction main.cpp ${HEADER_FILES})
-target_include_directories(StereoReconstruction PUBLIC ${EIGEN3_INCLUDE_DIR} ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(StereoReconstruction ${EIGEN3_LIBS} ${OpenCV_LIBS})
+set(HEADER_FILES 
+    Libs/Eigen.h 
+    Libs/SimpleMesh.h 
+    Libs/PointCloud.h 
+    Libs/VirtualSensor.h 
+    Libs/NearestNeighbour.h 
+    Libs/ProcrustesAligner.h 
+    Libs/ICPOptimizer.h 
+    Libs/FreeImageHelper.h
+    Libs/OpenCVLib.h
+    Libs/Types.h
+    Libs/Utils.h
+    Libs/Pipeline.h
+    Libs/Evaluate.h
+)
+
+set(SOURCE_FILES 
+    Libs/FreeImageHelper.cpp
+)
+
+add_executable(StereoReconstruction main.cpp ${HEADER_FILES} ${SOURCE_FILES})
+target_link_libraries(StereoReconstruction PRIVATE Eigen3::Eigen)
+target_link_libraries(StereoReconstruction PRIVATE flann::flann flann::flann_cpp)
+target_link_libraries(StereoReconstruction PRIVATE ceres Ceres::ceres)
+target_link_libraries(StereoReconstruction PRIVATE freeimage::FreeImage freeimage::FreeImagePlus)
+target_link_libraries(StereoReconstruction PRIVATE ${OpenCV_LIBS})
