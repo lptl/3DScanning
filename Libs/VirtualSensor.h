@@ -176,7 +176,7 @@ private:
 	}
 
 	bool readTrajectoryFile(const std::string& filename, std::vector<Eigen::Matrix4f>& result,
-	                        std::vector<double>& timestamps) {
+		std::vector<double>& timestamps) {
 		std::ifstream file(filename, std::ios::in);
 		if (!file.is_open()) return false;
 		result.clear();
@@ -211,8 +211,8 @@ private:
 
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-	// current frame index
-	int m_currentIdx;
+		// current frame index
+		int m_currentIdx;
 
 	int m_increment;
 

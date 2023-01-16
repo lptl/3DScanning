@@ -1,4 +1,5 @@
 #pragma once
+
 #include "SimpleMesh.h"
 
 class ProcrustesAligner {
@@ -12,7 +13,7 @@ public:
 
 		auto sourceMean = computeMean(sourcePoints);
 		auto targetMean = computeMean(targetPoints);
-		
+
 		Matrix3f rotation = estimateRotation(sourcePoints, sourceMean, targetPoints, targetMean);
 		Vector3f translation = computeTranslation(sourceMean, targetMean);
 
@@ -20,7 +21,7 @@ public:
 		// 1. Translation of a point to the shape Y: x' = x + t
 		// 2. Rotation of the point around the mean of shape Y: 
 		//    y = R (x' - yMean) + yMean = R (x + t - yMean) + yMean = R x + (R t - R yMean + yMean)
-		
+
 		Matrix4f estimatedPose = Matrix4f::Identity();
 		estimatedPose.block(0, 0, 3, 3) = rotation;
 		estimatedPose.block(0, 3, 3, 1) = rotation * translation - rotation * targetMean + targetMean;
@@ -56,11 +57,11 @@ private:
 		JacobiSVD<Matrix3f> svd(A, ComputeFullU | ComputeFullV);
 		const Matrix3f& U = svd.matrixU();
 		const Matrix3f& V = svd.matrixV();
-	
+
 		const float d = (U * V.transpose()).determinant();
 		Matrix3f D = Matrix3f::Identity();
 		D(2, 2) = d;
-		
+
 		Matrix3f R = U * D * V.transpose(); // the multiplication by D is necessary since UV' is only orthogonal, but not necessarily a rotation matrix
 		return R;
 	}

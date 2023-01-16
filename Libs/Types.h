@@ -8,8 +8,25 @@ struct filenameType {
     std::string name = ""; // fullname
 };
 
-struct detectResult{
+struct detectResult {
     std::vector<cv::KeyPoint> keypoints;
     cv::Mat descriptors;
     struct filenameType filetype;
+};
+
+struct cameraParams {
+    cv::Mat left_camera_matrix;
+    cv::Mat left_distortion_coeffs;
+    cv::Mat right_camera_matrix;
+    cv::Mat right_distortion_coeffs;
+    cv::Mat left_to_right_R;
+    cv::Mat left_to_right_T;
+
+    double baseline;
+    double fX;
+    double fY;
+    double cX;
+    double cY;
+
+    bool empty = true;
 };

@@ -1,8 +1,10 @@
 vcpkg/
 CMakeFiles/
 CMakeCache.txt
+CMakeSettings.json
 Makefile
 cmake_install.cmake
+.vs/
 .vscode/
 StereoReconstruction
 build/

@@ -125,8 +125,8 @@ public:
 
     static ceres::CostFunction* create(const Vector3f& sourcePoint, const Vector3f& targetPoint, const float weight) {
         return (new ceres::AutoDiffCostFunction<PointToPointConstraint, 3, 6>(
-                new PointToPointConstraint(sourcePoint, targetPoint, weight)
-                ));
+            new PointToPointConstraint(sourcePoint, targetPoint, weight)
+            ));
     }
 
 protected:
@@ -250,7 +250,7 @@ protected:
                 auto modOfNormal1 = sqrt(sourceNormal[0] * sourceNormal[0] + sourceNormal[1] * sourceNormal[1] + sourceNormal[2] * sourceNormal[2]);
                 auto modOfNormal2 = sqrt(targetNormal[0] * targetNormal[0] + targetNormal[1] * targetNormal[1] + targetNormal[2] * targetNormal[2]);
                 auto cosine_value = dot_product / (modOfNormal1 * modOfNormal2);
-                if(cosine_value <= 0.5)
+                if (cosine_value <= 0.5)
                     match.idx = -1;
             }
         }
@@ -359,7 +359,7 @@ private:
                     // problem.AddResidualBlock(new ceres::AutoDiffCostFunction<PointToPlaneConstraint, 1, 6>(new PointToPlaneConstraint(sourcePoint, targetPoint, targetNormal, match.weight)),
                     //                         nullptr, poseIncrement.getData());
                     problem.AddResidualBlock(PointToPlaneConstraint::create(sourcePoint, targetPoint, targetNormal, match.weight),
-                                             nullptr, poseIncrement.getData());
+                        nullptr, poseIncrement.getData());
 
                 }
             }
@@ -472,8 +472,8 @@ private:
         std::cout << "solved" << std::endl;
         VectorXf x(6);
         MatrixXf S(6, 6);
-        for(int i = 0; i < 3; i++)
-            for(int j = 0; j < 3; j++) {
+        for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++) {
                 if (j == i)
                     S(i, i) = 1.0 / svd.singularValues()(i);
                 else S(i, j) = 0;
