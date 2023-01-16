@@ -13,7 +13,7 @@ find_package(Flann CONFIG REQUIRED)
 find_package(Ceres CONFIG REQUIRED)
 find_package(OpenCV CONFIG REQUIRED)
 
-add_executable(StereoReconstruction main.cpp ${HEADER_FILES} ${SOURCE_FILES})
+add_executable(StereoReconstruction main.cpp)
 target_include_directories(StereoReconstruction PUBLIC ${freeimage_DIR})
 target_link_libraries(StereoReconstruction PRIVATE Eigen3::Eigen)
 target_link_libraries(StereoReconstruction PRIVATE flann::flann_s flann::flann_cpp_s)
