@@ -22,105 +22,6 @@
 std::string MODELS_DIR = "Models/";
 std::string PROJECT_PATH = "../../";
 
-
-
-void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoints1, std::vector<cv::KeyPoint> keypoints2, std::vector<cv::DMatch> good_matches, cv::Mat fundamental_matrix, struct cameraParams camParams, cv::Mat& left_rectified, cv::Mat& right_rectified) {
-    
-    if (!camParams.empty) {
-        cv::Mat R1, R2, P1, P2, Q;
-        // TODO: Currently this should give the ground-truth rectified images. For rectified images based on our method, decompose the fundamental matrix into R and T and pass those here (instead of left_to_right_R and left_to_right_T respectively)
-        stereoRectify(camParams.left_camera_matrix, camParams.left_distortion_coeffs, camParams.right_camera_matrix, camParams.right_distortion_coeffs, img1.size(), camParams.left_to_right_R, camParams.left_to_right_T, R1, R2, P1, P2, Q);
-
-        cv::Mat rmap[2][2];
-        initUndistortRectifyMap(camParams.left_camera_matrix, camParams.left_distortion_coeffs, R1, P1, img1.size(), CV_16SC2, rmap[0][0], rmap[0][1]);
-        initUndistortRectifyMap(camParams.right_camera_matrix, camParams.right_distortion_coeffs, R2, P2, img1.size(), CV_16SC2, rmap[1][0], rmap[1][1]);
-
-        remap(img1, left_rectified, rmap[0][0], rmap[0][1], cv::INTER_LINEAR);
-        remap(img2, right_rectified, rmap[1][0], rmap[1][1], cv::INTER_LINEAR);
-    }
-    else {
-        std::vector<cv::Point2f> points1, points2;
-        for (int i = 0; i < good_matches.size(); i++) {
-            points1.push_back(keypoints1[good_matches[i].queryIdx].pt);
-            points2.push_back(keypoints2[good_matches[i].trainIdx].pt);
-        }
-        if (points1.size() != points2.size() || points1.size() < 8) {
-            std::cout << "Error: The number of points is not enough." << std::endl;
-            return;
-        }
-
-        cv::Mat homography1, homography2;
-        double threshold = 5.0;
-        if (!stereoRectifyUncalibrated(points1, points2, fundamental_matrix, img1.size(), homography1, homography2, threshold)) {
-            std::cout << "Error: Failed to rectify images." << std::endl;
-            return;
-        }
-        
-        warpPerspective(img1, left_rectified, homography1, img1.size());
-        warpPerspective(img2, right_rectified, homography2, img2.size());
-    }
-    
-    return;
-}
-
-void find_fundamental_matrix(std::vector<cv::KeyPoint> keypoints1, std::vector<cv::KeyPoint> keypoints2, std::vector<cv::DMatch> correspondences, cv::Mat& fundamental_matrix){
-    std::vector<cv::Point2f> points1, points2;
-    for(int i = 0; i < correspondences.size(); i++){
-        points1.push_back(keypoints1[correspondences[i].queryIdx].pt);
-        points2.push_back(keypoints2[correspondences[i].trainIdx].pt);   
-    }
-    if(points1.size() != points2.size() || points1.size() < 8){
-        std::cout << "Error: The number of points is not enough." << std::endl;
-        return;
-    }
-
-    double ransacReprojThreshold = 3.0, confidence = 0.99;
-    if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "ransac"))
-        // Need 15 points for RANSAC, maybe need to change the condition above
-        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_RANSAC, ransacReprojThreshold, confidence);
-    else if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "lmeds"))
-        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_LMEDS, ransacReprojThreshold, confidence);
-    else if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "7point"))
-        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_7POINT);
-    else if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "8point"))
-        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_8POINT);
-    else{
-        std::cout << "Error: No such fundamental matrix method." << std::endl;
-        return;
-    }
-    return;
-}
-
-void match_descriptors(cv::Mat descriptors1, cv::Mat descriptors2, std::vector<cv::DMatch>& good_matches) {
-    std::vector<std::vector<cv::DMatch>> correspondences;
-
-    if(compare_string(DESCRIPTOR_MATCHING_METHOD, "flann")){
-        cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create(cv::DescriptorMatcher::FLANNBASED);
-        // the knn use NORM_L2 because sift is a float-pointing descriptor
-        // descriptor1 = queryDescriptor, descriptor2 = trainDescriptor
-        descriptors1.convertTo(descriptors1, CV_32F);
-        descriptors2.convertTo(descriptors2, CV_32F);
-        matcher->knnMatch(descriptors1, descriptors2, correspondences, 2);
-    }
-    else if(compare_string(DESCRIPTOR_MATCHING_METHOD, "brute_force")){
-        cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create(cv::DescriptorMatcher::BRUTEFORCE);
-        // the knn use NORM_L2 because sift is a float-pointing descriptor
-        matcher->knnMatch(descriptors1, descriptors2, correspondences, 2);
-    }
-    else{
-        std::cout << "Error: No such matching method." << std::endl;
-        exit(-1);
-    }
-
-    const float ratio_thresh = 0.7f;
-    for (size_t i = 0; i < correspondences.size(); i++){
-        if (correspondences[i][0].distance < ratio_thresh * correspondences[i][1].distance)
-            good_matches.push_back(correspondences[i][0]);
-    }
-    
-    return;
-}
-
 void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct detectResult *result){
 
     if(compare_string(DESCRIPTOR_METHOD, "harris")) {
@@ -302,6 +203,101 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
     return;
 }
 
+void match_descriptors(cv::Mat descriptors1, cv::Mat descriptors2, std::vector<cv::DMatch>& good_matches) {
+    std::vector<std::vector<cv::DMatch>> correspondences;
+
+    if(compare_string(DESCRIPTOR_MATCHING_METHOD, "flann")){
+        cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create(cv::DescriptorMatcher::FLANNBASED);
+        // the knn use NORM_L2 because sift is a float-pointing descriptor
+        // descriptor1 = queryDescriptor, descriptor2 = trainDescriptor
+        descriptors1.convertTo(descriptors1, CV_32F);
+        descriptors2.convertTo(descriptors2, CV_32F);
+        matcher->knnMatch(descriptors1, descriptors2, correspondences, 2);
+    }
+    else if(compare_string(DESCRIPTOR_MATCHING_METHOD, "brute_force")){
+        cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create(cv::DescriptorMatcher::BRUTEFORCE);
+        // the knn use NORM_L2 because sift is a float-pointing descriptor
+        matcher->knnMatch(descriptors1, descriptors2, correspondences, 2);
+    }
+    else{
+        std::cout << "Error: No such matching method." << std::endl;
+        exit(-1);
+    }
+
+    const float ratio_thresh = 0.7f;
+    for (size_t i = 0; i < correspondences.size(); i++){
+        if (correspondences[i][0].distance < ratio_thresh * correspondences[i][1].distance)
+            good_matches.push_back(correspondences[i][0]);
+    }
+    
+    return;
+}
+
+void find_fundamental_matrix(std::vector<cv::KeyPoint> keypoints1, std::vector<cv::KeyPoint> keypoints2, std::vector<cv::DMatch> correspondences, cv::Mat& fundamental_matrix){
+    std::vector<cv::Point2f> points1, points2;
+    for(int i = 0; i < correspondences.size(); i++){
+        points1.push_back(keypoints1[correspondences[i].queryIdx].pt);
+        points2.push_back(keypoints2[correspondences[i].trainIdx].pt);   
+    }
+    if(points1.size() != points2.size() || points1.size() < 8){
+        std::cout << "Error: The number of points is not enough." << std::endl;
+        return;
+    }
+
+    double ransacReprojThreshold = 3.0, confidence = 0.99;
+    if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "ransac"))
+        // Need 15 points for RANSAC, maybe need to change the condition above
+        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_RANSAC, ransacReprojThreshold, confidence);
+    else if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "lmeds"))
+        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_LMEDS, ransacReprojThreshold, confidence);
+    else if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "7point"))
+        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_7POINT);
+    else if(compare_string(FUNDAMENTAL_MATRIX_METHOD, "8point"))
+        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_8POINT);
+    else{
+        std::cout << "Error: No such fundamental matrix method." << std::endl;
+        return;
+    }
+    return;
+}
+
+void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoints1, std::vector<cv::KeyPoint> keypoints2, std::vector<cv::DMatch> good_matches, cv::Mat fundamental_matrix, struct cameraParams camParams, cv::Mat& left_rectified, cv::Mat& right_rectified) {
+    
+    if (!camParams.empty) {
+        cv::Mat R1, R2, P1, P2, Q;
+        // TODO: Currently this should give the ground-truth rectified images. For rectified images based on our method, decompose the fundamental matrix into R and T and pass those here (instead of left_to_right_R and left_to_right_T respectively)
+        stereoRectify(camParams.left_camera_matrix, camParams.left_distortion_coeffs, camParams.right_camera_matrix, camParams.right_distortion_coeffs, img1.size(), camParams.left_to_right_R, camParams.left_to_right_T, R1, R2, P1, P2, Q);
+
+        cv::Mat rmap[2][2];
+        initUndistortRectifyMap(camParams.left_camera_matrix, camParams.left_distortion_coeffs, R1, P1, img1.size(), CV_16SC2, rmap[0][0], rmap[0][1]);
+        initUndistortRectifyMap(camParams.right_camera_matrix, camParams.right_distortion_coeffs, R2, P2, img1.size(), CV_16SC2, rmap[1][0], rmap[1][1]);
+
+        remap(img1, left_rectified, rmap[0][0], rmap[0][1], cv::INTER_LINEAR);
+        remap(img2, right_rectified, rmap[1][0], rmap[1][1], cv::INTER_LINEAR);
+    }
+    else {
+        std::vector<cv::Point2f> points1, points2;
+        for (int i = 0; i < good_matches.size(); i++) {
+            points1.push_back(keypoints1[good_matches[i].queryIdx].pt);
+            points2.push_back(keypoints2[good_matches[i].trainIdx].pt);
+        }
+        if (points1.size() != points2.size() || points1.size() < 8) {
+            std::cout << "Error: The number of points is not enough." << std::endl;
+            return;
+        }
+
+        cv::Mat homography1, homography2;
+        double threshold = 5.0;
+        if (!stereoRectifyUncalibrated(points1, points2, fundamental_matrix, img1.size(), homography1, homography2, threshold)) {
+            std::cout << "Error: Failed to rectify images." << std::endl;
+            return;
+        }
+        warpPerspective(img1, left_rectified, homography1, img1.size());
+        warpPerspective(img2, right_rectified, homography2, img2.size());
+    }
+    return;
+}
+
 void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat& disp) {
 
     cv::Ptr<cv::ximgproc::DisparityWLSFilter> wls_filter;
@@ -354,7 +350,6 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat& disp) {
         std::cout << "No such dense matching method." << std::endl;
         return;
     }
-
     double lambda = 8000.0, sigma = 1.5;
     wls_filter->setLambda(lambda);
     wls_filter->setSigmaColor(sigma);
@@ -421,7 +416,6 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
     std::stringstream ss;
     ss << PROJECT_PATH << "Output/pointclouds/" << filename << ".off";
     writeMesh(vertices, width, height, ss.str());
-    
     return;
 }
 

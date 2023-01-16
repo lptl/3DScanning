@@ -4,7 +4,6 @@
 
 #define DATASET "kitti" // kitti, bricks-rgbd
 
-
 void process_pair_images(std::string filename1, std::string filename2, struct cameraParams camParams)
 {
     cv::Mat left = imread(filename1, cv::IMREAD_COLOR);
