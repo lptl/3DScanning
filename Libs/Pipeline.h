@@ -11,7 +11,7 @@
 
 #include "Utils.h"
 
-#define DESCRIPTOR_METHOD "brisk" // harris, sift, surf, orb, brisk, shi-tomasi, fast
+#define DESCRIPTOR_METHOD "orb" // harris, sift, surf, orb, brisk, shi-tomasi, fast
 #define DESCRIPTOR_MATCHING_METHOD "flann" // flann, brute_force
 #define FUNDAMENTAL_MATRIX_METHOD "ransac" // ransac, lmeds, 7point, 8point
 #define DENSE_MATCHING_METHOD "sgbm" // bm, sgbm
@@ -19,8 +19,8 @@
 #define USE_LINEAR_ICP true
 #define USE_POINT_TO_PLANE false
 
-std::string MODELS_DIR = "Models/";
-std::string PROJECT_PATH = "../../";
+std::string MODELS_DIR = "Output/pointclouds/";
+std::string PROJECT_PATH = "/Users/k/Desktop/Courses/3dscanning/3DScanning/";
 
 void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct detectResult *result){
 
@@ -299,7 +299,6 @@ void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoi
 }
 
 void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat& disp) {
-
     cv::Ptr<cv::ximgproc::DisparityWLSFilter> wls_filter;
     cv::Mat left_gray, right_gray, left_disp, right_disp;
     cvtColor(left, left_gray, cv::COLOR_BGR2GRAY);
@@ -319,16 +318,9 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat& disp) {
             right_matcher->compute(right_gray, left_gray, right_disp);
             wls_filter = cv::ximgproc::createDisparityWLSFilter(left_matcher);
         }
-
-        /*
-        cv::Mat left_disp_vis;
-        getDisparityVis(left_disp, left_disp_vis);
-        imshow("Left Disparity", left_disp_vis);
-        waitKey();
-        */
     }
     else if (compare_string(DENSE_MATCHING_METHOD, "sgbm")) {
-        int min_disp = 0, max_disp = 160, wsize = 3;
+        int min_disp = 0, max_disp = 160, wsize = 9;
         cv::Ptr<cv::StereoSGBM> left_matcher = cv::StereoSGBM::create(min_disp, max_disp, wsize);
         left_matcher->setP1(24 * wsize * wsize);
         left_matcher->setP2(96 * wsize * wsize);
@@ -353,31 +345,42 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat& disp) {
     double lambda = 8000.0, sigma = 1.5;
     wls_filter->setLambda(lambda);
     wls_filter->setSigmaColor(sigma);
-
     wls_filter->filter(left_disp, left, disp, right_disp);
-
+    // for(int i = 0; i < disp.rows; i++)
+    //     for(int j = 0; j < disp.cols; j++)
+    //         std::cout << disp.at<float>(i, j) << " ";
+    // std::cout << std::endl;
     return;
 }
 
 void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams camParams, cv::Mat& depthMap) {
-
+    // for(int i = 0; i < disparity_map.rows; i++)
+    //     for(int j = 0; j < disparity_map.cols; j++)
+    //         std::cout << disparity_map.at<double>(i, j) << " ";
+    // std::cout << std::endl;
     for (int i = 0; i < disparityMap.rows; i++) {
         for (int j = 0; j < disparityMap.cols; j++) {
-            double d = static_cast<double>(disparityMap.at<float>(i, j));
-            depthMap.at<unsigned short>(i, j) = (camParams.baseline * camParams.fX) / d;
-            depthMap.at<unsigned short>(i, j) = d;
-            if (d < 10)
+            if(disparityMap.at<double>(i, j) == 0 || std::isnan(disparityMap.at<double>(i, j)))
                 depthMap.at<unsigned short>(i, j) = -1;
+            else{
+                double d = disparityMap.at<double>(i, j);
+                if(d < 0) d = -d;
+                depthMap.at<double>(i, j) = (100 * camParams.baseline * camParams.fX) / d; // convert m to cm by multiplying 100
+                //std::cout << "The disparity is: "<< d << " The depth is " << depthMap.at<double>(i, j) << std::endl;
+            }
+            // std::cout << "(" << i << "," << j << ") disparity:" << d << " depth:" << depth << std::endl;
+            // depthMap.at<unsigned short>(i, j) = d;
+            //if (d < 10)
+            //    depthMap.at<unsigned short>(i, j) = -1;
             //if (d>0) std::cout << "The disparity is: "<< (camParams.baseline * camParams.fX) / d<< std::endl;
-            short disparity_ij = disparityMap.at<unsigned short>(i, j);
+            /*short disparity_ij = disparityMap.at<unsigned short>(i, j);
             if (disparity_ij <= 1)
                 depthMap.at<unsigned short>(i, j) = 0;
 
             if (std::isnan(static_cast<double>(depthMap.at<unsigned short>(i, j))) || std::isinf(static_cast<double>(depthMap.at<unsigned short>(i, j))))
-                depthMap.at<unsigned short>(i, j) = 0;
+                depthMap.at<unsigned short>(i, j) = 0;*/
         }
     }
-
     return;
 }
 
@@ -393,7 +396,7 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
             // float depth = *(depthMap + idx);
             float depth = (float)(depth_map.at<short>(h, w));
             depth = depth;
-            if (depth != MINF && depth != 0 && depth < 100) { // range filter: (0, 1 meter)
+            if (depth != MINF && depth != 0 && depth < 100 && depth != -1) { // range filter: (0, 1 meter)
                 float X_c = (float(w) - camParams.cX) * depth / camParams.fX;
                 float Y_c = (float(h) - camParams.cY) * depth / camParams.fY;
                 Vector4f P_c = Vector4f(X_c, Y_c, depth, 1);
@@ -460,11 +463,8 @@ bool icp_reconstruct(const std::string base_model, const std::string other_model
     optimizer->estimatePose(source, target, estimatedPose);
 
     // Visualize the resulting joined mesh. We add triangulated spheres for point matches.
-    std::cout << "joining meshes" << std::endl;
     SimpleMesh resultingMesh = SimpleMesh::joinMeshes(sourceMesh, targetMesh, estimatedPose);
-    std::cout << "mesh joined" << std::endl;
     resultingMesh.writeMesh(target_model);
-    std::cout << "Resulting mesh written." << std::endl;
 
     delete optimizer;
 

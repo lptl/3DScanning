@@ -3,6 +3,8 @@
 #include "Libs/Pipeline.h"
 
 #define DATASET "kitti" // kitti, bricks-rgbd
+#define TEST 1 // 0: no test, 1: test
+#define RECONSTRUCT 0 // 0: no reconstruction, 1: reconstruction
 
 void process_pair_images(std::string filename1, std::string filename2, struct cameraParams camParams)
 {
@@ -54,10 +56,10 @@ void process_pair_images(std::string filename1, std::string filename2, struct ca
     cv::Mat disp;
     compute_disparity_map(left_rectified, right_rectified, disp);
     // save to file
-    imwrite(PROJECT_PATH + "Output/disparity_maps/" + img1_name, disp);
+    imwrite(PROJECT_PATH + "Output/disparity_map.png" , disp);
 
     std::cout << "Generating point cloud" << std::endl;
-    cv::Mat depthMap = cv::Mat(disp.size(), CV_16U);
+    cv::Mat depthMap = cv::Mat::zeros(disp.rows, disp.cols, CV_16UC1);
     get_depth_map_from_disparity_map(disp, camParams, depthMap);
     get_point_cloud_from_depth_map(depthMap, left_rectified, camParams, std::to_string(result1.filetype.number));
 
@@ -85,8 +87,12 @@ int main()
                 if (filename_type.category != 0)
                     continue;
                 process_pair_images(dataset_dir + "/" + entry->d_name, dataset_dir + "/" + get_file_name(filename_type.number + 1, filename_type.category), camParams);
+                if(TEST)
+                    break;
             }
         }
+        if(RECONSTRUCT)
+            reconstruct(MODELS_DIR);
         closedir(directory);
     }
     else if (compare_string(DATASET, "kitti")) {
@@ -114,10 +120,13 @@ int main()
                 //std::cout << camParams.left_to_right_R << std::endl;
                 //std::cout << camParams.left_to_right_T << std::endl;
                 process_pair_images(left_dir + filename, right_dir + filename, camParams);
+                if(TEST)
+                    break;
             }
         }
         closedir(directory);
-        reconstruct(MODELS_DIR);
+        if(RECONSTRUCT)
+            reconstruct(MODELS_DIR);
     }
 
     std::cout << "Stereo Reconstruction Finished" << std::endl;
