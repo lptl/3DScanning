@@ -1,14 +1,9 @@
 #pragma once
 
-#include <iostream>
-#include <fstream>
-
-#include "Eigen.h"
 #include "VirtualSensor.h"
 
 struct Vertex {
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
 	// Position stored as 4 floats (4th component is supposed to be 1.0)
 	Vector4f position;
 	// Color stored as 4 unsigned char
@@ -61,7 +56,7 @@ public:
 		for (unsigned int v = 0; v < sensor.getDepthImageHeight(); ++v) {
 			// For every pixel in a row.
 			for (unsigned int u = 0; u < sensor.getDepthImageWidth(); ++u) {
-				unsigned int idx = v*sensor.getDepthImageWidth() + u; // linearized index
+				unsigned int idx = v * sensor.getDepthImageWidth() + u; // linearized index
 				float depth = depthMap[idx];
 				if (depth == MINF) {
 					m_vertices[idx].position = Vector4f(MINF, MINF, MINF, MINF);
@@ -78,10 +73,10 @@ public:
 					unsigned int vCol = (unsigned int)std::floor(proj.y());
 					if (uCol >= sensor.getColorImageWidth()) uCol = sensor.getColorImageWidth() - 1;
 					if (vCol >= sensor.getColorImageHeight()) vCol = sensor.getColorImageHeight() - 1;
-					unsigned int idxCol = vCol*sensor.getColorImageWidth() + uCol; // linearized index color
-																					//unsigned int idxCol = idx; // linearized index color
+					unsigned int idxCol = vCol * sensor.getColorImageWidth() + uCol; // linearized index color
+					//unsigned int idxCol = idx; // linearized index color
 
-					// Write color to vertex.
+// Write color to vertex.
 					m_vertices[idx].color = Vector4uc(colorMap[4 * idxCol + 0], colorMap[4 * idxCol + 1], colorMap[4 * idxCol + 2], colorMap[4 * idxCol + 3]);
 				}
 			}
@@ -91,10 +86,10 @@ public:
 		m_triangles.reserve((sensor.getDepthImageHeight() - 1) * (sensor.getDepthImageWidth() - 1) * 2);
 		for (unsigned int i = 0; i < sensor.getDepthImageHeight() - 1; i++) {
 			for (unsigned int j = 0; j < sensor.getDepthImageWidth() - 1; j++) {
-				unsigned int i0 = i*sensor.getDepthImageWidth() + j;
-				unsigned int i1 = (i + 1)*sensor.getDepthImageWidth() + j;
-				unsigned int i2 = i*sensor.getDepthImageWidth() + j + 1;
-				unsigned int i3 = (i + 1)*sensor.getDepthImageWidth() + j + 1;
+				unsigned int i0 = i * sensor.getDepthImageWidth() + j;
+				unsigned int i1 = (i + 1) * sensor.getDepthImageWidth() + j;
+				unsigned int i2 = i * sensor.getDepthImageWidth() + j + 1;
+				unsigned int i3 = (i + 1) * sensor.getDepthImageWidth() + j + 1;
 
 				bool valid0 = m_vertices[i0].position.allFinite();
 				bool valid1 = m_vertices[i1].position.allFinite();
@@ -220,7 +215,7 @@ public:
 			unsigned int num_vs;
 			file >> num_vs;
 			ASSERT(num_vs == 3 && "We can only read triangular mesh.");
-			
+
 			Triangle t;
 			file >> t.idx0 >> t.idx1 >> t.idx2;
 			m_triangles.push_back(t);
@@ -261,16 +256,16 @@ public:
 
 	/**
 	 * Joins two meshes together by putting them into the common mesh and transforming the vertex positions of
-	 * mesh1 with transformation 'pose1to2'. 
+	 * mesh1 with transformation 'pose1to2'.
 	 */
 	static SimpleMesh joinMeshes(const SimpleMesh& mesh1, const SimpleMesh& mesh2, Matrix4f pose1to2 = Matrix4f::Identity()) {
 		SimpleMesh joinedMesh;
-		const auto& vertices1  = mesh1.getVertices();
+		const auto& vertices1 = mesh1.getVertices();
 		const auto& triangles1 = mesh1.getTriangles();
-		const auto& vertices2  = mesh2.getVertices();
+		const auto& vertices2 = mesh2.getVertices();
 		const auto& triangles2 = mesh2.getTriangles();
 
-		auto& joinedVertices  = joinedMesh.getVertices();
+		auto& joinedVertices = joinedMesh.getVertices();
 		auto& joinedTriangles = joinedMesh.getTriangles();
 
 		const unsigned nVertices1 = vertices1.size();
@@ -308,9 +303,9 @@ public:
 	static SimpleMesh sphere(Vector3f center, float scale = 1.f, Vector4uc color = { 0, 0, 255, 255 }) {
 		SimpleMesh mesh;
 		Vector4f centerHomogenous = Vector4f{ center.x(), center.y(), center.z(), 1.f };
-		
+
 		// These are precomputed values for sphere aproximation.
-		const std::vector<double> vertexComponents = { -0.525731, 0, 0.850651 ,0.525731, 0 ,0.850651, -0.525731, 0 ,-0.850651, 0.525731, 0 ,-0.850651, 0, 0.850651, 0.525731, 0, 0.850651, -0.525731, 0, 
+		const std::vector<double> vertexComponents = { -0.525731, 0, 0.850651 ,0.525731, 0 ,0.850651, -0.525731, 0 ,-0.850651, 0.525731, 0 ,-0.850651, 0, 0.850651, 0.525731, 0, 0.850651, -0.525731, 0,
 			-0.850651, 0.525731, 0, -0.850651, -0.525731, 0.850651, 0.525731, 0, -0.850651, 0.525731, 0, 0.850651, -0.525731, 0, -0.850651, -0.525731, 0 };
 		const std::vector<unsigned> faceIndices = { 0, 4, 1, 0, 9, 4, 9, 5, 4, 4, 5, 8, 4, 8, 1, 8, 10, 1, 8, 3, 10, 5, 3, 8, 5, 2, 3, 2, 7, 3, 7, 10,
 			3, 7, 6, 10, 7, 11, 6, 11, 0, 6, 0, 1, 6, 6, 1, 10, 9, 0, 11, 9, 11, 2, 9, 2, 5, 7, 2, 11 };
@@ -339,7 +334,7 @@ public:
 		Matrix4f cameraToWorld = cameraPose.inverse();
 
 		// These are precomputed values for sphere aproximation.
-		std::vector<double> vertexComponents = { 25, 25, 0, -50, 50, 100, 49.99986, 49.9922, 99.99993, -24.99998, 25.00426, 0.005185, 
+		std::vector<double> vertexComponents = { 25, 25, 0, -50, 50, 100, 49.99986, 49.9922, 99.99993, -24.99998, 25.00426, 0.005185,
 			25.00261, -25.00023, 0.004757, 49.99226, -49.99986, 99.99997, -50, -50, 100, -25.00449, -25.00492, 0.019877 };
 		const std::vector<unsigned> faceIndices = { 1, 2, 3, 2, 0, 3, 2, 5, 4, 4, 0, 2, 5, 6, 7, 7, 4, 5, 6, 1, 7, 1, 3, 7, 3, 0, 4, 7, 3, 4, 5, 2, 1, 5, 1, 6 };
 
@@ -418,7 +413,7 @@ private:
 		auto b = vB.normalized();
 		auto axis = b.cross(a);
 		float angle = acosf(a.dot(b));
-		
+
 		if (angle == 0.0f) {  // No rotation
 			return Matrix3f::Identity();
 		}
@@ -437,4 +432,3 @@ private:
 		return rotation;
 	}
 };
-

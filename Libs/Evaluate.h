@@ -1,6 +1,7 @@
 #pragma once
 #include <iostream>
-#include <direct.h>
+#include <dirent.h>
+
 #include "Libs/Pipeline.h"
 
 template<typename Func>
