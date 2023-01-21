@@ -30,3 +30,8 @@ struct cameraParams {
 
     bool empty = true;
 };
+
+struct MSEextrinsic {
+    double mse_R;
+    double mse_T;
+};
