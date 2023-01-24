@@ -3,12 +3,14 @@
 #include <dirent.h>
 #include <algorithm>
 #include "Pipeline.h"
+
 #include "Types.h"
 #include <cassert>
 
 template <typename Func>
 double computeRunTime(Func f)
 {
+
 
     int64 start = cv::getTickCount();
 
@@ -54,7 +56,9 @@ std::vector<struct detectResult> processXimages(int image_number, std::string da
     return reusltVector;
 }
 
+
 bool is_rotation_matrix(cv::Mat &R)
+
 {
     cv::Mat Rt;
     transpose(R, Rt);
@@ -69,6 +73,7 @@ cv::Vec3d rotation_matrix2euler_angles(cv::Mat &R)
 
     if (!is_rotation_matrix(R))
     {
+
         std::cout << "The input Matrix is not a rotation matrix!" << std::endl;
         return cv::Vec3d();
     }
@@ -98,6 +103,7 @@ cv::Vec3d rotation_matrix2euler_angles(cv::Mat &R)
 double euler_square_error(cv::Mat R1, cv::Mat R2)
 {
 
+
     // Convert rotation matrices to Euler angles
     cv::Vec3f euler1, euler2;
     euler1 = rotation_matrix2euler_angles(R1);
@@ -106,9 +112,11 @@ double euler_square_error(cv::Mat R1, cv::Mat R2)
     // Calculate mean squared error
     double mse = 0;
     mse = cv::norm(euler1, euler2, cv::NORM_L2);
+
     // for (int i = 0; i < 3; i++) {
     //     mse += pow(euler1[i] - euler2[i], 2);
     // }
+
     mse /= 3;
     std::cout << "Mean Squared Error: " << mse << std::endl;
     return mse;
@@ -121,6 +129,7 @@ struct MSEextrinsic matching_method_compare(std::vector<cv::KeyPoint> keypoints1
     std::vector<cv::Point2f> points1, points2;
     for (int i = 0; i < good_matches.size(); i++)
     {
+
         points1.push_back(keypoints1[good_matches[i].queryIdx].pt);
         points2.push_back(keypoints2[good_matches[i].trainIdx].pt);
     }
