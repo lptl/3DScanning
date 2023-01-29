@@ -11,10 +11,8 @@ Please specify more concretely which “matching cost computation methods, cost 
 While you do not need to implement everything yourself (e.g. sparse keypoint detection/matching can be taken from OpenCV), please note that the whole project should not be implemented by simply calling OpenCV functions for everything. For instance, you could implement the dense matching yourself, since you also want to compare different implementations in your final report.
 Typically, people start with calibrated cameras as input in their datasets to simplify the pre-processing. I think your datasets offer intrinsics already, so I suggest you use them, instead of calibrating the cameras yourself.
 
-## Questions
+## Running the code
 
-* opencv only provides feature matcher, which use feature descriptors as input. There is no keypoint matcher in opencv. But harris keypoint matcher produce keypoints and harris corner responses.
+* See defined macros in `main.cpp` and `Libs/Pipeline.h` to decide the whole running procedure.
 
-* Why the matching result of feature matcher contains the index of keypoints
-
-* still confusing about how to merge multiple point clouds to get a whole 3D model because ICP seems not to do the job. One solution is each time merge two models and then get the final model.
+* See `CMakeLists.txt` for libraries installation.
