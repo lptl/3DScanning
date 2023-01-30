@@ -11,7 +11,6 @@ template <typename Func>
 double computeRunTime(Func f)
 {
 
-
     int64 start = cv::getTickCount();
 
     f();
@@ -55,7 +54,6 @@ std::vector<struct detectResult> processXimages(int image_number, std::string da
     }
     return reusltVector;
 }
-
 
 bool is_rotation_matrix(cv::Mat &R)
 
@@ -102,7 +100,6 @@ cv::Vec3d rotation_matrix2euler_angles(cv::Mat &R)
 
 double euler_square_error(cv::Mat R1, cv::Mat R2)
 {
-
 
     // Convert rotation matrices to Euler angles
     cv::Vec3f euler1, euler2;

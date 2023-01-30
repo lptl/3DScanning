@@ -12,7 +12,7 @@ void process_pair_images(std::string filename1, std::string filename2, struct ca
 {
     cv::Mat left = imread(filename1, cv::IMREAD_COLOR);
     cv::Mat right = imread(filename2, cv::IMREAD_COLOR);
-    // TODO: calibrate image distortion if needed
+    // TODO: do image distortion calibrration if needed
     if (left.empty() || right.empty())
     {
         std::cout << "Error: Image not found or failed to open image." << std::endl;
@@ -52,7 +52,7 @@ void process_pair_images(std::string filename1, std::string filename2, struct ca
     imwrite(PROJECT_PATH + "Output/disparity_map/" + img1_name, disp);
 
     std::cout << "Generating point cloud" << std::endl;
-    cv::Mat depthMap = cv::Mat::zeros(disp.rows, disp.cols, CV_16UC1);
+    cv::Mat depthMap = cv::Mat::zeros(disp.rows, disp.cols, CV_64F);
     get_depth_map_from_disparity_map(disp, camParams, depthMap);
     get_point_cloud_from_depth_map(depthMap, left_rectified, camParams, std::to_string(result1.filetype.number));
 
@@ -64,6 +64,8 @@ void process_pair_images(std::string filename1, std::string filename2, struct ca
 int main()
 {
     std::cout << "Using dataset:                         " << DATASET << std::endl;
+    std::cout << "Test mode:                             " << TEST << std::endl;
+    std::cout << "Debug mode                             " << DEBUG << std::endl;
     std::cout << "Descriptor method:                     " << DESCRIPTOR_METHOD << std::endl;
     std::cout << "Matching method:                       " << DESCRIPTOR_MATCHING_METHOD << std::endl;
     std::cout << "Fundamental matrix calculation method: " << FUNDAMENTAL_MATRIX_METHOD << std::endl;
