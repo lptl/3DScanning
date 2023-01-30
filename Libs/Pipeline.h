@@ -20,6 +20,7 @@
 #define USE_POINT_TO_PLANE false
 #define RECONSTRUCT_METHOD "icp"      // icp, poisson
 #define MERGE_METHOD "frame-to-frame" // frame-to-frame, frame-to-model
+#define DEBUG 0
 
 std::string MODELS_DIR = "Output/pointclouds/";
 std::string PROJECT_PATH = "/Users/k/Desktop/Courses/3dscanning/3DScanning/";
@@ -291,9 +292,8 @@ void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoi
     if (!camParams.empty)
     {
         cv::Mat R1, R2, P1, P2, Q;
-        // TODO: Currently this should give the ground-truth rectified images. For rectified images based on our method, decompose the fundamental matrix into R and T and pass those here (instead of left_to_right_R and left_to_right_T respectively)
         cv::Mat essential_matrix = camParams.right_camera_matrix.t() * fundamental_matrix * camParams.left_camera_matrix;
-        // svd decomposition of essential matrix
+        // TODO: the calculated translation matrix has large deviation from the groundtruth one.
         cv::Mat U, S, Vt;
         cv::SVDecomp(essential_matrix, S, U, Vt, cv::SVD::FULL_UV);
         cv::Mat W = (cv::Mat_<double>(3, 3) << 0, -1, 0, 1, 0, 0, 0, 0, 1);
@@ -316,6 +316,7 @@ void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoi
     }
     else
     {
+        // using uncalibrated stereo rectification
         std::vector<cv::Point2f> points1, points2;
         for (int i = 0; i < good_matches.size(); i++)
         {
@@ -396,44 +397,28 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp)
     wls_filter->setLambda(lambda);
     wls_filter->setSigmaColor(sigma);
     wls_filter->filter(left_disp, left, disp, right_disp);
-    // for(int i = 0; i < disp.rows; i++)
-    //     for(int j = 0; j < disp.cols; j++)
-    //         std::cout << disp.at<float>(i, j) << " ";
-    // std::cout << std::endl;
+    // turn the diaparity map into a 8-bit image to solve the abnormal values
+    // cv::normalize(disp, disp, 0, 255, cv::NORM_MINMAX, CV_8U);
+    disp.convertTo(disp, CV_64F, 1.0 / 16.0);
+    if (DEBUG)
+        std::cout << "Disparity map: " << disp << std::endl;
     return;
 }
 
 void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams camParams, cv::Mat &depthMap)
 {
-    // for(int i = 0; i < disparity_map.rows; i++)
-    //     for(int j = 0; j < disparity_map.cols; j++)
-    //         std::cout << disparity_map.at<double>(i, j) << " ";
-    // std::cout << std::endl;
-    for (int i = 0; i < disparityMap.rows; i++)
+    int width = disparityMap.cols;
+    int height = disparityMap.rows;
+    depthMap = cv::Mat(height, width, CV_64F);
+    for (int h = 0; h < height; h++)
     {
-        for (int j = 0; j < disparityMap.cols; j++)
+        for (int w = 0; w < width; w++)
         {
-            if (disparityMap.at<double>(i, j) == 0 || std::isnan(disparityMap.at<double>(i, j)))
-                depthMap.at<unsigned short>(i, j) = -1;
+            double disparity = disparityMap.at<double>(h, w);
+            if (disparity == 0)
+                depthMap.at<double>(h, w) = 0;
             else
-            {
-                double d = disparityMap.at<double>(i, j);
-                if (d < 0)
-                    d = -d;
-                depthMap.at<double>(i, j) = (100 * camParams.baseline * camParams.fX) / d; // convert m to cm by multiplying 100
-                // std::cout << "The disparity is: "<< d << " The depth is " << depthMap.at<double>(i, j) << std::endl;
-            }
-            // std::cout << "(" << i << "," << j << ") disparity:" << d << " depth:" << depth << std::endl;
-            // depthMap.at<unsigned short>(i, j) = d;
-            // if (d < 10)
-            //    depthMap.at<unsigned short>(i, j) = -1;
-            // if (d>0) std::cout << "The disparity is: "<< (camParams.baseline * camParams.fX) / d<< std::endl;
-            /*short disparity_ij = disparityMap.at<unsigned short>(i, j);
-            if (disparity_ij <= 1)
-                depthMap.at<unsigned short>(i, j) = 0;
-
-            if (std::isnan(static_cast<double>(depthMap.at<unsigned short>(i, j))) || std::isinf(static_cast<double>(depthMap.at<unsigned short>(i, j))))
-                depthMap.at<unsigned short>(i, j) = 0;*/
+                depthMap.at<double>(h, w) = camParams.fX * camParams.baseline / disparity;
         }
     }
     return;
@@ -545,7 +530,7 @@ void merge(std::string models_directory)
     struct dirent *entry;
     int index = 0;
     std::string base_model, target_model, other_model;
-    if (MERGE_METHOD == "frame-to-frame")
+    if (compare_string(MERGE_METHOD, "frame-to-frame"))
     {
         while (directory != NULL)
         {
@@ -570,7 +555,7 @@ void merge(std::string models_directory)
             }
         }
     }
-    else if (MERGE_METHOD == "frame-to-model")
+    else if (compare_string(MERGE_METHOD, "frame-to-model"))
     {
         // this is using frame-to-model method
         std::vector<std::string> models;
