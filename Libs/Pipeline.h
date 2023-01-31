@@ -23,7 +23,7 @@
 #define DEBUG 0
 
 std::string MODELS_DIR = "Output/pointclouds/";
-std::string PROJECT_PATH = "/Users/k/Desktop/Courses/3dscanning/3DScanning/";
+std::string PROJECT_PATH = "E:/TumProject/3DScanning/FinalProject/";
 
 void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct detectResult *result)
 {
@@ -437,7 +437,7 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
         {
             int idx = h * width + w;
             // float depth = *(depthMap + idx);
-            float depth = (float)(depth_map.at<short>(h, w));
+            double depth = (double)(depth_map.at<double>(h, w));
             depth = depth;
             if (depth != MINF && depth != 0 && depth < 100 && depth != -1)
             { // range filter: (0, 1 meter)

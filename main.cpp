@@ -5,8 +5,9 @@
 
 #define DATASET "kitti"          // kitti, bricks-rgbd
 #define TEST 1                   // 0: no test, 1: test
-#define RECONSTRUCT 0            // 0: no reconstruction, 1: reconstruction
+#define RECONSTRUCT 1            // 0: no reconstruction, 1: reconstruction
 #define COMPARE_DENSE_MATCHING 0 // 0: no comparison, 1: comparison, compare dense matching with groundtruth
+#define COMPARE_SPARSE_MATCHING 0 // 0: no comparison, 1: comparison, compare calculated matrix from sparse matching with Camera.parameters
 
 void process_pair_images(std::string filename1, std::string filename2, struct cameraParams camParams)
 {
@@ -40,6 +41,11 @@ void process_pair_images(std::string filename1, std::string filename2, struct ca
     cv::Mat fundamental_matrix;
     find_fundamental_matrix(result1.keypoints, result2.keypoints, good_matches, fundamental_matrix);
 
+    if (COMPARE_SPARSE_MATCHING)
+    {
+        matching_method_compare(result1.keypoints, result2.keypoints, good_matches, camParams);
+    }
+
     std::cout << "Rectifying images" << std::endl;
     cv::Mat left_rectified, right_rectified;
     rectify_images(left, right, result1.keypoints, result2.keypoints, good_matches, fundamental_matrix, camParams, left_rectified, right_rectified);
@@ -53,6 +59,7 @@ void process_pair_images(std::string filename1, std::string filename2, struct ca
 
     std::cout << "Generating point cloud" << std::endl;
     cv::Mat depthMap = cv::Mat::zeros(disp.rows, disp.cols, CV_64F);
+
     get_depth_map_from_disparity_map(disp, camParams, depthMap);
     get_point_cloud_from_depth_map(depthMap, left_rectified, camParams, std::to_string(result1.filetype.number));
 
