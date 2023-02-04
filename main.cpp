@@ -47,14 +47,24 @@ void process_pair_images(std::string filename1, std::string filename2, struct ca
     imwrite(PROJECT_PATH + "Output/right_rectified/" + img2_name, right_rectified);
 
     std::cout << "Computing disparity map" << std::endl;
-    cv::Mat disp;
+    cv::Mat disp, disp_vis;
     compute_disparity_map(left_rectified, right_rectified, disp);
-    imwrite(PROJECT_PATH + "Output/disparity_map/" + img1_name, disp);
+    cv::ximgproc::getDisparityVis(disp, disp_vis);
+    imwrite(PROJECT_PATH + "Output/disparity_map/" + img1_name, disp_vis);
 
     std::cout << "Generating point cloud" << std::endl;
-    cv::Mat depthMap = cv::Mat::zeros(disp.rows, disp.cols, CV_16UC1);
+    cv::Mat depthMap;
     get_depth_map_from_disparity_map(disp, camParams, depthMap);
     get_point_cloud_from_depth_map(depthMap, left_rectified, camParams, std::to_string(result1.filetype.number));
+
+    // Free up memory
+    left.release();
+    right.release();
+    img_matches.release();
+    fundamental_matrix.release();
+    disp.release();
+    disp_vis.release();
+    depthMap.release();
 
     std::cout << "Finished processing " << filename1 << " and " << filename2 << std::endl
               << std::endl;
@@ -124,6 +134,7 @@ int main()
                 std::string calib_file = calib_dir + filename.substr(filename.find_last_of("/") + 1, filename.find("_")) + ".txt";
                 struct cameraParams camParams;
                 getCameraParamsKITTI(calib_file, &camParams);
+                std::cout << camParams.left_to_right_T << std::endl;
                 process_pair_images(left_dir + filename, right_dir + filename, camParams);
                 if (TEST)
                     break;

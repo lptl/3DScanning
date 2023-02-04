@@ -22,7 +22,7 @@
 #define MERGE_METHOD "frame-to-frame" // frame-to-frame, frame-to-model
 
 std::string MODELS_DIR = "Output/pointclouds/";
-std::string PROJECT_PATH = "/Users/k/Desktop/Courses/3dscanning/3DScanning/";
+std::string PROJECT_PATH = "../../";
 
 void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct detectResult *result)
 {
@@ -345,11 +345,12 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp)
 {
     cv::Ptr<cv::ximgproc::DisparityWLSFilter> wls_filter;
     cv::Mat left_gray, right_gray, left_disp, right_disp;
-    cvtColor(left, left_gray, cv::COLOR_BGR2GRAY);
-    cvtColor(right, right_gray, cv::COLOR_BGR2GRAY);
 
     if (compare_string(DENSE_MATCHING_METHOD, "bm"))
     {
+        cvtColor(left, left_gray, cv::COLOR_BGR2GRAY);
+        cvtColor(right, right_gray, cv::COLOR_BGR2GRAY);
+
         int max_disp = 160, wsize = 15;
         cv::Ptr<cv::StereoBM> left_matcher = cv::StereoBM::create(max_disp, wsize);
         cv::Ptr<cv::StereoMatcher> right_matcher = cv::ximgproc::createRightMatcher(left_matcher);
@@ -368,22 +369,22 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp)
     }
     else if (compare_string(DENSE_MATCHING_METHOD, "sgbm"))
     {
-        int min_disp = 0, max_disp = 160, wsize = 9;
+        int min_disp = 40, max_disp = 80, wsize = 12;
         cv::Ptr<cv::StereoSGBM> left_matcher = cv::StereoSGBM::create(min_disp, max_disp, wsize);
         left_matcher->setP1(24 * wsize * wsize);
         left_matcher->setP2(96 * wsize * wsize);
-        left_matcher->setMode(cv::StereoSGBM::MODE_SGBM);
+        left_matcher->setMode(cv::StereoSGBM::MODE_SGBM_3WAY);
         cv::Ptr<cv::StereoMatcher> right_matcher = cv::ximgproc::createRightMatcher(left_matcher);
 
         if (!USE_POST_FILTERING)
         {
-            left_matcher->compute(left_gray, right_gray, disp);
+            left_matcher->compute(left, right, disp);
             return;
         }
         else
         {
-            left_matcher->compute(left_gray, right_gray, left_disp);
-            right_matcher->compute(right_gray, left_gray, right_disp);
+            left_matcher->compute(left, right, left_disp);
+            right_matcher->compute(right, left, right_disp);
             wls_filter = cv::ximgproc::createDisparityWLSFilter(left_matcher);
         }
     }
@@ -392,48 +393,30 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp)
         std::cout << "No such dense matching method." << std::endl;
         return;
     }
-    double lambda = 8000.0, sigma = 1.5;
+
+    double lambda = 4000.0, sigma = 1.5;
     wls_filter->setLambda(lambda);
     wls_filter->setSigmaColor(sigma);
     wls_filter->filter(left_disp, left, disp, right_disp);
-    // for(int i = 0; i < disp.rows; i++)
-    //     for(int j = 0; j < disp.cols; j++)
-    //         std::cout << disp.at<float>(i, j) << " ";
-    // std::cout << std::endl;
+
     return;
 }
 
 void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams camParams, cv::Mat &depthMap)
 {
-    // for(int i = 0; i < disparity_map.rows; i++)
-    //     for(int j = 0; j < disparity_map.cols; j++)
-    //         std::cout << disparity_map.at<double>(i, j) << " ";
-    // std::cout << std::endl;
-    for (int i = 0; i < disparityMap.rows; i++)
-    {
-        for (int j = 0; j < disparityMap.cols; j++)
-        {
-            if (disparityMap.at<double>(i, j) == 0 || std::isnan(disparityMap.at<double>(i, j)))
-                depthMap.at<unsigned short>(i, j) = -1;
-            else
-            {
-                double d = disparityMap.at<double>(i, j);
-                if (d < 0)
-                    d = -d;
-                depthMap.at<double>(i, j) = (100 * camParams.baseline * camParams.fX) / d; // convert m to cm by multiplying 100
-                // std::cout << "The disparity is: "<< d << " The depth is " << depthMap.at<double>(i, j) << std::endl;
-            }
-            // std::cout << "(" << i << "," << j << ") disparity:" << d << " depth:" << depth << std::endl;
-            // depthMap.at<unsigned short>(i, j) = d;
-            // if (d < 10)
-            //    depthMap.at<unsigned short>(i, j) = -1;
-            // if (d>0) std::cout << "The disparity is: "<< (camParams.baseline * camParams.fX) / d<< std::endl;
-            /*short disparity_ij = disparityMap.at<unsigned short>(i, j);
-            if (disparity_ij <= 1)
-                depthMap.at<unsigned short>(i, j) = 0;
+    int width = disparityMap.cols;
+    int height = disparityMap.rows;    
+    depthMap = cv::Mat(height, width, CV_64F);
 
-            if (std::isnan(static_cast<double>(depthMap.at<unsigned short>(i, j))) || std::isinf(static_cast<double>(depthMap.at<unsigned short>(i, j))))
-                depthMap.at<unsigned short>(i, j) = 0;*/
+    for (int h = 0; h < height; h++)
+    {
+        for (int w = 0; w < width; w++)
+        {
+            int disparity = disparityMap.at<int>(h, w);
+            if (disparity == 0)
+                depthMap.at<double>(h, w) = 0;
+            else
+                depthMap.at<double>(h, w) = camParams.fX * camParams.baseline / disparity;
         }
     }
     return;
@@ -441,7 +424,6 @@ void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams 
 
 void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct cameraParams camParams, std::string filename)
 {
-
     int width = depth_map.cols;
     int height = depth_map.rows;
 

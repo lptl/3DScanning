@@ -24,8 +24,6 @@ struct cameraParams
     cv::Mat right_distortion_coeffs;
     cv::Mat left_to_right_R;
     cv::Mat left_to_right_T;
-    cv::Mat right_to_left_R;
-    cv::Mat right_to_left_T;
 
     double baseline;
     double fX;

@@ -151,9 +151,7 @@ void getCameraParamsKITTI(std::string calib_file, struct cameraParams *camParams
     }
 
     camParams->left_to_right_R = left_R.t() * right_R;
-    camParams->left_to_right_T = right_T - left_T;
-    camParams->right_to_left_R = right_R.t() * left_R;
-    camParams->right_to_left_T = left_T - right_T;
+    camParams->left_to_right_T = (left_R.t() * right_T) - left_T;
 
     // TODO: Calculate these values instead of hardcoding
     camParams->baseline = 0.5327190420453419;
