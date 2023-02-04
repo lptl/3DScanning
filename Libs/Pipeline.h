@@ -20,6 +20,7 @@
 #define USE_POINT_TO_PLANE false
 #define RECONSTRUCT_METHOD "icp"      // icp, poisson
 #define MERGE_METHOD "frame-to-frame" // frame-to-frame, frame-to-model
+#define DEBUG 0
 
 std::string MODELS_DIR = "Output/pointclouds/";
 std::string PROJECT_PATH = "../../";
@@ -291,9 +292,8 @@ void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoi
     if (!camParams.empty)
     {
         cv::Mat R1, R2, P1, P2, Q;
-        // TODO: Currently this should give the ground-truth rectified images. For rectified images based on our method, decompose the fundamental matrix into R and T and pass those here (instead of left_to_right_R and left_to_right_T respectively)
         cv::Mat essential_matrix = camParams.right_camera_matrix.t() * fundamental_matrix * camParams.left_camera_matrix;
-        // svd decomposition of essential matrix
+        // TODO: the calculated translation matrix has large deviation from the groundtruth one.
         cv::Mat U, S, Vt;
         cv::SVDecomp(essential_matrix, S, U, Vt, cv::SVD::FULL_UV);
         cv::Mat W = (cv::Mat_<double>(3, 3) << 0, -1, 0, 1, 0, 0, 0, 0, 1);
@@ -316,6 +316,7 @@ void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoi
     }
     else
     {
+        // using uncalibrated stereo rectification
         std::vector<cv::Point2f> points1, points2;
         for (int i = 0; i < good_matches.size(); i++)
         {
@@ -434,7 +435,7 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
         {
             int idx = h * width + w;
             // float depth = *(depthMap + idx);
-            float depth = (float)(depth_map.at<short>(h, w));
+            double depth = (double)(depth_map.at<double>(h, w));
             depth = depth;
             if (depth != MINF && depth != 0 && depth < 100 && depth != -1)
             { // range filter: (0, 1 meter)
@@ -527,7 +528,7 @@ void merge(std::string models_directory)
     struct dirent *entry;
     int index = 0;
     std::string base_model, target_model, other_model;
-    if (MERGE_METHOD == "frame-to-frame")
+    if (compare_string(MERGE_METHOD, "frame-to-frame"))
     {
         while (directory != NULL)
         {
@@ -552,7 +553,7 @@ void merge(std::string models_directory)
             }
         }
     }
-    else if (MERGE_METHOD == "frame-to-model")
+    else if (compare_string(MERGE_METHOD, "frame-to-model"))
     {
         // this is using frame-to-model method
         std::vector<std::string> models;

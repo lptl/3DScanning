@@ -205,7 +205,7 @@ bool writeMesh(Vertex *vertices, unsigned int ImageWidth, unsigned int ImageHeig
                 float d2 = (vertices[i1].position - vertices[i2].position).norm();
                 if (d0 < edgeThreshold && d1 < edgeThreshold && d2 < edgeThreshold)
                 {
-                    Vector3i faceIndices(i0, i1, i2);
+                    Vector3i faceIndices(i1, i2, i3);
                     FaceId.push_back(faceIndices);
                     nTriangles++;
                 }

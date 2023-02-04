@@ -11,7 +11,6 @@ template <typename Func>
 double computeRunTime(Func f)
 {
 
-
     int64 start = cv::getTickCount();
 
     f();
@@ -56,7 +55,6 @@ std::vector<struct detectResult> processXimages(int image_number, std::string da
     return reusltVector;
 }
 
-
 bool is_rotation_matrix(cv::Mat &R)
 
 {
@@ -96,13 +94,12 @@ cv::Vec3d rotation_matrix2euler_angles(cv::Mat &R)
         z = 0;
     }
 
-    std::cout << "Convert to euler angle: " << cv::Vec3d(x, y, z) << std::endl;
+    //std::cout << "Convert to euler angle: " << cv::Vec3d(x, y, z) << std::endl;
     return cv::Vec3d(x, y, z);
 }
 
 double euler_square_error(cv::Mat R1, cv::Mat R2)
 {
-
 
     // Convert rotation matrices to Euler angles
     cv::Vec3f euler1, euler2;
@@ -118,14 +115,14 @@ double euler_square_error(cv::Mat R1, cv::Mat R2)
     // }
 
     mse /= 3;
-    std::cout << "Mean Squared Error: " << mse << std::endl;
+    //std::cout << "Mean Squared Error: " << mse << std::endl;
     return mse;
 }
 
 struct MSEextrinsic matching_method_compare(std::vector<cv::KeyPoint> keypoints1, std::vector<cv::KeyPoint> keypoints2, std::vector<cv::DMatch> good_matches, struct cameraParams camParams)
 {
 
-    std::cout << "Evaluate " << DESCRIPTOR_METHOD << " description method........." << std::endl;
+    //std::cout << "Evaluate " << DESCRIPTOR_METHOD << " description method........." << std::endl;
     std::vector<cv::Point2f> points1, points2;
     for (int i = 0; i < good_matches.size(); i++)
     {
@@ -184,13 +181,13 @@ struct MSEextrinsic matching_method_compare(std::vector<cv::KeyPoint> keypoints1
     // Calculate translation MSE value
     double MSE_T = cv::norm(camParams.left_to_right_T, T, cv::NORM_L2);
 
-    std::cout << "mse_R: " << MSE_R << std::endl;
-    std::cout << "mse_T: " << MSE_T << std::endl;
+    std::cout << "MSE of Rotation Matrix: " << MSE_R << std::endl;
+    std::cout << "MSE of Translation Matrix: " << MSE_T << std::endl;
 
-    std::cout << "Essential matrix" << essential_matrix << std::endl;
-    std::cout << "R1 matrix" << R1 << std::endl;
-    std::cout << "R2 matrix" << R2 << std::endl;
-    std::cout << "T matrix" << T << std::endl;
+    //std::cout << "Essential matrix" << essential_matrix << std::endl;
+    //std::cout << "R1 matrix" << R1 << std::endl;
+    //std::cout << "R2 matrix" << R2 << std::endl;
+    //std::cout << "T matrix" << T << std::endl;
 
     mse_extr.mse_R = MSE_R;
     mse_extr.mse_T = MSE_T;
