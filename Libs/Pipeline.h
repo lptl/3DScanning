@@ -395,7 +395,7 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp)
         return;
     }
 
-    double lambda = 4000.0, sigma = 1.5;
+    double lambda = 8000.0, sigma = 1.5;
     wls_filter->setLambda(lambda);
     wls_filter->setSigmaColor(sigma);
     wls_filter->filter(left_disp, left, disp, right_disp);
