@@ -403,10 +403,10 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp)
     return;
 }
 
-void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams camParams, cv::Mat &depthMap)
+void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams camParams, cv::Mat& depthMap)
 {
     int width = disparityMap.cols;
-    int height = disparityMap.rows;    
+    int height = disparityMap.rows;
     depthMap = cv::Mat(height, width, CV_64F);
 
     for (int h = 0; h < height; h++)
@@ -425,17 +425,18 @@ void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams 
 
 void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct cameraParams camParams, std::string filename)
 {
+
     int width = depth_map.cols;
     int height = depth_map.rows;
 
-    Vertex *vertices = new Vertex[width * height];
+    Vertex* vertices = new Vertex[width * height];
     for (int h = 0; h < height; h++)
     {
         for (int w = 0; w < width; w++)
         {
             int idx = h * width + w;
             // float depth = *(depthMap + idx);
-            double depth = (double)(depth_map.at<double>(h, w));
+            float depth = (float)(depth_map.at<short>(h, w));
             depth = depth;
             if (depth != MINF && depth != 0 && depth < 100 && depth != -1)
             { // range filter: (0, 1 meter)
@@ -464,6 +465,7 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
     writeMesh(vertices, width, height, ss.str());
     return;
 }
+
 
 bool icp_reconstruct(const std::string base_model, const std::string other_model, std::string &target_model)
 {
