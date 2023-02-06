@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <array>
+#include <dirent.h>
 
 #include "SimpleMesh.h"
 #include "PointCloud.h"
@@ -10,6 +11,15 @@
 #include "ICPOptimizer.h"
 
 #include "Utils.h"
+
+#define DATASET "bricks-rgbd"                    // kitti, bricks-rgbd
+
+#define DEBUG 0		      // 1, output debug information, 0, no output
+#define TEST 0                  // 0: no test, 1: test 2 images only
+#define USE_GROUNDTRUTH 0  // 0: no groundtruth, 1: use groundtruth disparity, 2: use groundtruth depth
+
+#define RECONSTRUCT 0            // 0: no final model reconstruction, 1: final model reconstruction
+#define COMPARE_DENSE_MATCHING 0 // 0: no comparison, 1: comparison, compare dense matching with groundtruth
 
 #define DESCRIPTOR_METHOD "orb"            // harris, sift, surf, orb, brisk, shi-tomasi, fast
 #define DESCRIPTOR_MATCHING_METHOD "flann" // flann, brute_force
@@ -20,7 +30,6 @@
 #define USE_POINT_TO_PLANE false
 #define RECONSTRUCT_METHOD "icp"      // icp, poisson
 #define MERGE_METHOD "frame-to-frame" // frame-to-frame, frame-to-model
-#define DEBUG 0
 
 std::string MODELS_DIR = "Output/pointclouds/";
 std::string PROJECT_PATH = "/Users/k/Desktop/Courses/3dscanning/3DScanning/";
@@ -214,7 +223,7 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
     }
     else
     {
-        std::cout << "No such keypoint/descriptor method." << std::endl;
+        std::cout << "Error: No such keypoint/descriptor method." << std::endl;
     }
     return;
 }
@@ -244,6 +253,7 @@ void match_descriptors(cv::Mat descriptors1, cv::Mat descriptors2, std::vector<c
         exit(-1);
     }
 
+    // clean correspondences
     const float ratio_thresh = 0.7f;
     for (size_t i = 0; i < correspondences.size(); i++)
     {
@@ -280,7 +290,7 @@ void find_fundamental_matrix(std::vector<cv::KeyPoint> keypoints1, std::vector<c
         fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_8POINT);
     else
     {
-        std::cout << "Error: No such fundamental matrix method." << std::endl;
+        std::cout << "Error: No such fundamental matrix calculation method." << std::endl;
         return;
     }
     return;
@@ -297,15 +307,19 @@ void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoi
         cv::Mat U, S, Vt;
         cv::SVDecomp(essential_matrix, S, U, Vt, cv::SVD::FULL_UV);
         cv::Mat W = (cv::Mat_<double>(3, 3) << 0, -1, 0, 1, 0, 0, 0, 0, 1);
-        cv::Mat rotation_matrix = U * W * Vt;  // or U * W.t() * Vt
-        cv::Mat translation_matrix = U.col(2); // or -U.col(2)
-        // std::cout << "calculated rotation matrix: " << std::endl
-        //           << rotation_matrix << std::endl;
-        // std::cout << "calculated translation matrix: " << std::endl
-        //           << translation_matrix << std::endl;
-        // std::cout << "real rotation matrix: " << std::endl
-        //           << camParams.right_to_left_R << std::endl;
-        // std::cout << "real translation matrix: " << camParams.right_to_left_T << std::endl;
+        cv::Mat rotation_matrix = U * W.t() * Vt;  // or U * W.t() * Vt
+        cv::Mat translation_matrix = -U.col(2); // or -U.col(2)
+	if(DEBUG){
+	  std::cout << "Rectifying with camera parameters..." << std::endl;
+	  std::cout << "calculated rotation matrix: " << std::endl
+		    << rotation_matrix << std::endl;
+	  std::cout << "calculated translation matrix: " << std::endl
+		    << translation_matrix << std::endl;
+	  std::cout << "real rotation matrix: " << std::endl
+		    << camParams.right_to_left_R << std::endl;
+	  std::cout << "real translation matrix: " << camParams.right_to_left_T << std::endl;
+	}
+        // // stereoRectify(camParams.left_camera_matrix, camParams.left_distortion_coeffs, camParams.right_camera_matrix, camParams.right_distortion_coeffs, img1.size(), rotation_matrix, translation_matrix, R1, R2, P1, P2, Q);
         stereoRectify(camParams.left_camera_matrix, camParams.left_distortion_coeffs, camParams.right_camera_matrix, camParams.right_distortion_coeffs, img1.size(), camParams.left_to_right_R, camParams.left_to_right_T, R1, R2, P1, P2, Q);
         cv::Mat rmap[2][2];
         initUndistortRectifyMap(camParams.left_camera_matrix, camParams.left_distortion_coeffs, R1, P1, img1.size(), CV_16SC2, rmap[0][0], rmap[0][1]);
@@ -316,6 +330,8 @@ void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoi
     }
     else
     {
+      if(DEBUG)
+	std::cout << "Rectifying without camera parameters..." << std::endl;
         // using uncalibrated stereo rectification
         std::vector<cv::Point2f> points1, points2;
         for (int i = 0; i < good_matches.size(); i++)
@@ -328,7 +344,6 @@ void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoi
             std::cout << "Error: The number of points is not enough." << std::endl;
             return;
         }
-
         cv::Mat homography1, homography2;
         double threshold = 5.0;
         if (!stereoRectifyUncalibrated(points1, points2, fundamental_matrix, img1.size(), homography1, homography2, threshold))
@@ -390,16 +405,15 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp)
     }
     else
     {
-        std::cout << "No such dense matching method." << std::endl;
+        std::cout << "Error: No such dense matching method." << std::endl;
         return;
     }
     double lambda = 8000.0, sigma = 1.5;
     wls_filter->setLambda(lambda);
     wls_filter->setSigmaColor(sigma);
     wls_filter->filter(left_disp, left, disp, right_disp);
-    // turn the diaparity map into a 8-bit image to solve the abnormal values
-    // cv::normalize(disp, disp, 0, 255, cv::NORM_MINMAX, CV_8U);
-    disp.convertTo(disp, CV_64F, 1.0 / 16.0);
+    disp.convertTo(disp, CV_16U);
+    // disp.convertTo(disp, CV_64F, 1.0 / 16.0);
     if (DEBUG)
         std::cout << "Disparity map: " << disp << std::endl;
     return;
@@ -407,6 +421,27 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp)
 
 void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams camParams, cv::Mat &depthMap)
 {
+    if (USE_GROUNDTRUTH == 1)
+    {
+        std::string groundtruth_disparity_map_dir = PROJECT_PATH + "Data/" + DATASET + "/data_scene_flow/training/disp_noc_0/";
+        std::string image_name = "000015_10.png";
+        cv::Mat disparity_Map = cv::imread(groundtruth_disparity_map_dir + image_name, cv::IMREAD_ANYDEPTH);
+        int width = disparity_Map.cols, height = disparity_Map.rows;
+        depthMap = cv::Mat(height, width, CV_64F);
+        for (int h = 0; h < height; h++)
+        {
+            for (int w = 0; w < width; w++)
+            {
+                uint16_t disparity = disparity_Map.at<uint16_t>(h, w);
+                if (disparity == 0)
+                    depthMap.at<double>(h, w) = 0;
+                else{
+                    depthMap.at<double>(h, w) = (256.0 * camParams.fX * camParams.baseline) / (float)disparity;
+		}
+            }
+        }
+        return;
+    }
     int width = disparityMap.cols;
     int height = disparityMap.rows;
     depthMap = cv::Mat(height, width, CV_64F);
@@ -414,11 +449,12 @@ void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams 
     {
         for (int w = 0; w < width; w++)
         {
-            double disparity = disparityMap.at<double>(h, w);
+            uint16_t disparity = disparityMap.at<uint16_t>(h, w);
             if (disparity == 0)
                 depthMap.at<double>(h, w) = 0;
-            else
-                depthMap.at<double>(h, w) = camParams.fX * camParams.baseline / disparity;
+            else{
+                depthMap.at<double>(h, w) = 256.0 * camParams.fX * camParams.baseline / disparity;
+	    }
         }
     }
     return;
@@ -426,6 +462,35 @@ void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams 
 
 void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct cameraParams camParams, std::string filename)
 {
+  if (USE_GROUNDTRUTH == 2){
+    std::string groundtruth_depth_map = PROJECT_PATH + "Data/" + DATASET + "/frame-000000.depth.png";
+    cv::Mat depth_image = cv::imread(groundtruth_depth_map, cv::IMREAD_ANYDEPTH);
+    std::string color_image_path = PROJECT_PATH + "Data/" + DATASET + "/frame-000000.color.png";
+    cv::Mat color_image = cv::imread(color_image_path, cv::IMREAD_COLOR);
+    cv::Mat map_x, map_y;
+    cv::Mat depth_intrinsics = (cv::Mat_<float>(3, 3) <<
+        577.871, 0, 319.623,
+        0, 580.258, 239.624,
+        0, 0, 1);
+    // Get the intrinsic parameters of the color camera
+    cv::Mat color_intrinsics = (cv::Mat_<float>(3, 3) <<
+        1170.19, 0, 647.75,
+        0, 1170.19, 483.75,
+        0, 0, 1);
+    depth_intrinsics.convertTo(depth_intrinsics, CV_32F);
+    color_intrinsics.convertTo(color_intrinsics, CV_32F);
+    cv::initUndistortRectifyMap(depth_intrinsics, cv::Mat::zeros(5, 1, CV_32F), cv::Mat::eye(3, 3, CV_32F), color_intrinsics, color_image.size(), CV_16SC2, map_x, map_y);
+    // Align the depth image to the color image
+    cv::Mat depth_aligned;
+    cv::remap(depth_image, depth_aligned, map_x, map_y, cv::INTER_LINEAR);
+    depth_aligned.convertTo(depth_aligned, CV_64F);
+    depth_map = depth_aligned;
+    rgb_map = color_image;
+    camParams.cX = 647.75;
+    camParams.cY = 483.75;
+    camParams.fX = 1170.19;
+    camParams.fY = 1170.19;
+  }
 
     int width = depth_map.cols;
     int height = depth_map.rows;
@@ -436,10 +501,11 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
         for (int w = 0; w < width; w++)
         {
             int idx = h * width + w;
-            // float depth = *(depthMap + idx);
-            float depth = (float)(depth_map.at<short>(h, w));
-            depth = depth;
-            if (depth != MINF && depth != 0 && depth < 100 && depth != -1)
+            float depth = (float)(depth_map.at<double>(h, w));
+	    // TODO: notice the storage format of cv::Mat, float number must read with float, integer must
+	    // be read by integer type, otherwise the value would be 0.
+	    // float depth = (float)(depth_map.at<uint16_t>(h, w));
+            if (depth != MINF && depth != 0 && depth < 5000 && depth != -1)
             { // range filter: (0, 1 meter)
                 float X_c = (float(w) - camParams.cX) * depth / camParams.fX;
                 float Y_c = (float(h) - camParams.cY) * depth / camParams.fY;
@@ -579,4 +645,35 @@ void merge(std::string models_directory)
         }
     }
     closedir(directory);
+}
+
+std::string flag_to_string(int flag){
+  if(flag)
+    return "True";
+  else
+    return "False";
+}
+
+void print_running_information(){
+  std::cout << "Using dataset:                         " << DATASET << std::endl;
+  std::cout << "Test mode:                             " << flag_to_string(TEST) << std::endl;
+  if(USE_GROUNDTRUTH > 0){
+    if(USE_GROUNDTRUTH == 1)
+      std::cout << "Using groundtruth disparity map of kitti..." << std::endl;
+    else
+      std::cout << "Using groudtruth depth map of bricks-rgbd..." << std::endl;
+  }
+  std::cout << "Debug mode                             " << flag_to_string(DEBUG) << std::endl;
+  std::cout << "Descriptor method:                     " << DESCRIPTOR_METHOD << std::endl;
+  std::cout << "Descriptor matching method:            " << DESCRIPTOR_MATCHING_METHOD << std::endl;
+  std::cout << "Fundamental matrix calculation method: " << FUNDAMENTAL_MATRIX_METHOD << std::endl;
+  std::cout << "Dense matching method:                 " << DENSE_MATCHING_METHOD << std::endl;
+  std::cout << "Use post filtering:                    " << flag_to_string(USE_POST_FILTERING) << std::endl;
+  if(RECONSTRUCT){
+    std::cout << "Reconstruct the whole 3D model:        " << flag_to_string(RECONSTRUCT) << std::endl;
+    std::cout << "Use linear icp:                        " << flag_to_string(USE_LINEAR_ICP) << std::endl;
+    std::cout << "Use point to plane distance in icp:    " << flag_to_string(USE_POINT_TO_PLANE) << std::endl;
+    std::cout << "Merging model method:                  " << MERGE_METHOD << std::endl;
+  }
+  std::cout << "Compute dense matching performance:    " << flag_to_string(COMPARE_DENSE_MATCHING) << std::endl; 
 }

@@ -14,5 +14,5 @@ Typically, people start with calibrated cameras as input in their datasets to si
 ## Running the code
 
 * See defined macros in `main.cpp` and `Libs/Pipeline.h` to decide the whole running procedure.
-
 * See `CMakeLists.txt` for libraries installation.
+* Run `prepare.sh` to create folder directories

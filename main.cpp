@@ -1,12 +1,6 @@
-#include <dirent.h>
-
 #include "Libs/Pipeline.h"
 #include "Libs/Evaluate.h"
 
-#define DATASET "kitti"          // kitti, bricks-rgbd
-#define TEST 1                   // 0: no test, 1: test
-#define RECONSTRUCT 0            // 0: no reconstruction, 1: reconstruction
-#define COMPARE_DENSE_MATCHING 0 // 0: no comparison, 1: comparison, compare dense matching with groundtruth
 
 void process_pair_images(std::string filename1, std::string filename2, struct cameraParams camParams)
 {
@@ -23,59 +17,53 @@ void process_pair_images(std::string filename1, std::string filename2, struct ca
     std::string img2_name = filename2.substr(filename2.find_last_of("/\\") + 1);
 
     std::cout << "Processing " << filename1 << " and " << filename2 << std::endl;
-
-    std::cout << "Detecting keypoints and computing descriptors" << std::endl;
+    
+    if(DEBUG)
+      std::cout << "Detecting keypoints and computing descriptors..." << std::endl;
     struct detectResult result1, result2;
     detect_keypoints_or_features(img1_name, left, &result1);
     detect_keypoints_or_features(img2_name, right, &result2);
-
-    std::cout << "Matching descriptors" << std::endl;
+    
+    if(DEBUG)
+      std::cout << "Matching descriptors..." << std::endl;
     std::vector<cv::DMatch> good_matches;
     match_descriptors(result1.descriptors, result2.descriptors, good_matches);
     cv::Mat img_matches;
     drawMatches(left, result1.keypoints, right, result2.keypoints, good_matches, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1), std::vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
     imwrite(PROJECT_PATH + "Output/descriptor_match/" + std::to_string(result1.filetype.number) + "-" + std::to_string(result2.filetype.number) + ".png", img_matches);
 
-    std::cout << "Computing fundamental matrix" << std::endl;
+    if(DEBUG)
+      std::cout << "Estimating fundamental matrix..." << std::endl;
     cv::Mat fundamental_matrix;
     find_fundamental_matrix(result1.keypoints, result2.keypoints, good_matches, fundamental_matrix);
 
-    std::cout << "Rectifying images" << std::endl;
+    if(DEBUG)
+      std::cout << "Rectifying images..." << std::endl;
     cv::Mat left_rectified, right_rectified;
     rectify_images(left, right, result1.keypoints, result2.keypoints, good_matches, fundamental_matrix, camParams, left_rectified, right_rectified);
-    imwrite(PROJECT_PATH + "Output/left_rectified/" + img1_name, left_rectified);
-    imwrite(PROJECT_PATH + "Output/right_rectified/" + img2_name, right_rectified);
+    imwrite(PROJECT_PATH + "Output/left_rectified/left-" + img1_name, left_rectified);
+    imwrite(PROJECT_PATH + "Output/right_rectified/right-" + img2_name, right_rectified);
 
-    std::cout << "Computing disparity map" << std::endl;
-    cv::Mat disp;
+    if(DEBUG)
+      std::cout << "Computing disparity map..." << std::endl;
+    cv::Mat disp = cv::Mat(left_rectified.rows, left_rectified.cols, CV_16U);
     compute_disparity_map(left_rectified, right_rectified, disp);
     imwrite(PROJECT_PATH + "Output/disparity_map/" + img1_name, disp);
 
-    std::cout << "Generating point cloud" << std::endl;
+    if(DEBUG)
+      std::cout << "Computing depth map and generating point cloud..." << std::endl;
     cv::Mat depthMap = cv::Mat::zeros(disp.rows, disp.cols, CV_64F);
     get_depth_map_from_disparity_map(disp, camParams, depthMap);
     get_point_cloud_from_depth_map(depthMap, left_rectified, camParams, std::to_string(result1.filetype.number));
 
-    std::cout << "Finished processing " << filename1 << " and " << filename2 << std::endl
+    std::cout << "Processed " << filename1 << " and " << filename2 << std::endl
               << std::endl;
     return;
 }
 
 int main()
 {
-    std::cout << "Using dataset:                         " << DATASET << std::endl;
-    std::cout << "Test mode:                             " << TEST << std::endl;
-    std::cout << "Debug mode                             " << DEBUG << std::endl;
-    std::cout << "Descriptor method:                     " << DESCRIPTOR_METHOD << std::endl;
-    std::cout << "Matching method:                       " << DESCRIPTOR_MATCHING_METHOD << std::endl;
-    std::cout << "Fundamental matrix calculation method: " << FUNDAMENTAL_MATRIX_METHOD << std::endl;
-    std::cout << "Dense matching method:                 " << DENSE_MATCHING_METHOD << std::endl;
-    std::cout << "Post filtering after dense matching:   " << USE_POST_FILTERING << std::endl;
-    std::cout << "Use linear icp:                        " << USE_LINEAR_ICP << std::endl;
-    std::cout << "Use point to plane distance in icp:    " << USE_POINT_TO_PLANE << std::endl;
-    std::cout << "Reconstruct the whole 3D model:        " << RECONSTRUCT << std::endl;
-    std::cout << "Merging method:                        " << MERGE_METHOD << std::endl;
-    std::cout << "Compute dense matching performance:    " << COMPARE_DENSE_MATCHING << std::endl;
+    print_running_information();
     std::string dataset_dir = PROJECT_PATH + "Data/" + DATASET;
     if (compare_string(DATASET, "bricks-rgbd"))
     {
@@ -88,7 +76,8 @@ int main()
         }
         else
         {
-            struct cameraParams camParams;
+	    std::string color_intrinsics = dataset_dir + "/colorIntrinsics.txt";
+	    std::string depth_intrinsics = dataset_dir + "/depthIntrinsics.txt";
             while ((entry = readdir(directory)) != NULL)
             {
                 if (entry->d_name[0] != 'f')
@@ -96,6 +85,11 @@ int main()
                 struct filenameType filename_type = extract_file_name(entry->d_name);
                 if (filename_type.category != 0)
                     continue;
+		struct cameraParams camParams;
+		std::string left_pose = dataset_dir + "/" + get_file_name(filename_type.number, 2);
+		std::string right_pose = dataset_dir + "/" + get_file_name(filename_type.number + 1, 2);
+		// TODO: add baseline calculation of every two images
+		getCameraParamsBricks(color_intrinsics, depth_intrinsics, left_pose, right_pose, &camParams);
                 process_pair_images(dataset_dir + "/" + entry->d_name, dataset_dir + "/" + get_file_name(filename_type.number + 1, filename_type.category), camParams);
                 if (TEST)
                     break;
@@ -135,7 +129,7 @@ int main()
     }
     if (RECONSTRUCT)
         merge(MODELS_DIR);
-    if (COMPARE_DENSE_MATCHING)
+    if (compare_string(DATASET, "kitti") && COMPARE_DENSE_MATCHING)
     {
         std::string disp_dir = PROJECT_PATH + "Output/disparity_map/";
         std::string groundtruth_disp_dir = dataset_dir + "/data_scene_flow/training/disp_occ_0/";
