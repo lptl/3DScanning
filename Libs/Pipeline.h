@@ -15,7 +15,7 @@
 #define DATASET "bricks-rgbd"                    // kitti, bricks-rgbd
 
 #define DEBUG 0		      // 1, output debug information, 0, no output
-#define TEST 0                  // 0: no test, 1: test 2 images only
+#define TEST 1                  // 0: no test, 1: test 2 images only
 #define USE_GROUNDTRUTH 0  // 0: no groundtruth, 1: use groundtruth disparity, 2: use groundtruth depth
 
 #define RECONSTRUCT 0            // 0: no final model reconstruction, 1: final model reconstruction
@@ -414,7 +414,7 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp)
     wls_filter->filter(left_disp, left, disp, right_disp);
     disp.convertTo(disp, CV_16U);
     // disp.convertTo(disp, CV_64F, 1.0 / 16.0);
-    if (DEBUG)
+    if (DEBUG >= 2)
         std::cout << "Disparity map: " << disp << std::endl;
     return;
 }
@@ -453,7 +453,7 @@ void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams 
             if (disparity == 0)
                 depthMap.at<double>(h, w) = 0;
             else{
-                depthMap.at<double>(h, w) = 256.0 * camParams.fX * camParams.baseline / disparity;
+	      depthMap.at<double>(h, w) = 256.0 * camParams.fX * camParams.baseline / (disparity * 6000);
 	    }
         }
     }
@@ -463,10 +463,13 @@ void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams 
 void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct cameraParams camParams, std::string filename)
 {
   if (USE_GROUNDTRUTH == 2){
-    std::string groundtruth_depth_map = PROJECT_PATH + "Data/" + DATASET + "/frame-000000.depth.png";
-    cv::Mat depth_image = cv::imread(groundtruth_depth_map, cv::IMREAD_ANYDEPTH);
-    std::string color_image_path = PROJECT_PATH + "Data/" + DATASET + "/frame-000000.color.png";
-    cv::Mat color_image = cv::imread(color_image_path, cv::IMREAD_COLOR);
+    std::string groundtruth_depth_map = PROJECT_PATH + "Data/" + DATASET + "/frame-000080.depth.png";
+    cv::Mat depth_image = cv::imread(groundtruth_depth_map, cv::IMREAD_UNCHANGED);
+    depth_image.convertTo(depth_image, CV_32FC1, (1.0 / 1000.0));
+    
+    std::string color_image_path = PROJECT_PATH + "Data/" + DATASET + "/frame-000080.color.png";
+    cv::Mat color_image = cv::imread(color_image_path, cv::IMREAD_UNCHANGED);
+
     cv::Mat map_x, map_y;
     cv::Mat depth_intrinsics = (cv::Mat_<float>(3, 3) <<
         577.871, 0, 319.623,
@@ -483,9 +486,11 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
     // Align the depth image to the color image
     cv::Mat depth_aligned;
     cv::remap(depth_image, depth_aligned, map_x, map_y, cv::INTER_LINEAR);
+
     depth_aligned.convertTo(depth_aligned, CV_64F);
     depth_map = depth_aligned;
     rgb_map = color_image;
+
     camParams.cX = 647.75;
     camParams.cY = 483.75;
     camParams.fX = 1170.19;
@@ -496,6 +501,10 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
     int height = depth_map.rows;
 
     Vertex *vertices = new Vertex[width * height];
+    double max_depth = 0.0;
+    double min_depth = 100000.0;
+    double average_depth = 0.0;
+    int valid_depth_count = 0;
     for (int h = 0; h < height; h++)
     {
         for (int w = 0; w < width; w++)
@@ -507,16 +516,22 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
 	    // float depth = (float)(depth_map.at<uint16_t>(h, w));
             if (depth != MINF && depth != 0 && depth < 5000 && depth != -1)
             { // range filter: (0, 1 meter)
-                float X_c = (float(w) - camParams.cX) * depth / camParams.fX;
-                float Y_c = (float(h) - camParams.cY) * depth / camParams.fY;
-                Vector4f P_c = Vector4f(X_c, Y_c, depth, 1);
+	      if(depth > max_depth)
+		max_depth = depth;
+	      if(min_depth > depth)
+		min_depth = depth;
+	      average_depth += depth;
+	      valid_depth_count++;
+	      float X_c = (float(w) - camParams.cX) * depth / camParams.fX;
+	      float Y_c = (float(h) - camParams.cY) * depth / camParams.fY;
+	      Vector4f P_c = Vector4f(X_c, Y_c, depth, 1);
 
-                vertices[idx].position = P_c;
-                unsigned char R = rgb_map.at<cv::Vec3b>(h, w)[2];
-                unsigned char G = rgb_map.at<cv::Vec3b>(h, w)[1];
-                unsigned char B = rgb_map.at<cv::Vec3b>(h, w)[0];
-                unsigned char A = 255;
-                vertices[idx].color = Vector4uc(R, G, B, A);
+	      vertices[idx].position = P_c;
+	      unsigned char R = rgb_map.at<cv::Vec3b>(h, w)[2];
+	      unsigned char G = rgb_map.at<cv::Vec3b>(h, w)[1];
+	      unsigned char B = rgb_map.at<cv::Vec3b>(h, w)[0];
+	      unsigned char A = 255;
+	      vertices[idx].color = Vector4uc(R, G, B, A);
             }
             else
             {
@@ -525,6 +540,9 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
             }
         }
     }
+    std::cout << "max depth: " << max_depth << std::endl;
+    std::cout << "min depth: " << min_depth << std::endl;
+    std::cout << "average depth: " << average_depth / valid_depth_count << std::endl;
 
     // write to the off file
     std::stringstream ss;

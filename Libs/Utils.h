@@ -269,11 +269,21 @@ void getCameraParamsKITTI(std::string calib_file, struct cameraParams *camParams
     return;
 }
 
-bool writeMesh(Vertex *vertices, unsigned int ImageWidth, unsigned int ImageHeight, const std::string &filename, float edgeThreshold = 0.01f)
+bool writeMesh(Vertex *vertices, unsigned int ImageWidth, unsigned int ImageHeight, const std::string &filename, float edgeThreshold = 0.005f)
 {
-    unsigned int nVertices = ImageWidth * ImageHeight;
+    unsigned int nVertices = 0;
     unsigned int nTriangles = 0;
     std::vector<Vector3i> FaceId;
+    std::map<unsigned int, unsigned int> indexToVertexId;
+
+    for(unsigned int i = 0; i < ImageHeight; i++)
+      for(unsigned int j = 0; j < ImageWidth; j++){
+	unsigned int index = i * ImageWidth + j;
+	if(vertices[index].position.allFinite()){
+	  indexToVertexId[index] = nVertices;
+	  nVertices++;
+	}
+      }
 
     for (unsigned int i = 0; i < ImageHeight - 1; i++)
     {
@@ -288,13 +298,13 @@ bool writeMesh(Vertex *vertices, unsigned int ImageWidth, unsigned int ImageHeig
             bool valid1 = vertices[i1].position.allFinite();
             bool valid2 = vertices[i2].position.allFinite();
             bool valid3 = vertices[i3].position.allFinite();
-
+	    
             if (valid0 && valid1 && valid2)
             {
                 float d0 = (vertices[i0].position - vertices[i1].position).norm();
                 float d1 = (vertices[i0].position - vertices[i2].position).norm();
                 float d2 = (vertices[i1].position - vertices[i2].position).norm();
-                if (d0 < edgeThreshold && d1 < edgeThreshold && d2 < edgeThreshold)
+                if ((d0 < edgeThreshold && d1 < edgeThreshold && d2 < edgeThreshold))
                 {
                     Vector3i faceIndices(i0, i1, i2);
                     FaceId.push_back(faceIndices);
@@ -307,7 +317,7 @@ bool writeMesh(Vertex *vertices, unsigned int ImageWidth, unsigned int ImageHeig
                 float d0 = (vertices[i3].position - vertices[i1].position).norm();
                 float d1 = (vertices[i3].position - vertices[i2].position).norm();
                 float d2 = (vertices[i1].position - vertices[i2].position).norm();
-                if (d0 < edgeThreshold && d1 < edgeThreshold && d2 < edgeThreshold)
+                if ((d0 < edgeThreshold && d1 < edgeThreshold && d2 < edgeThreshold))
                 {
                     Vector3i faceIndices(i1, i2, i3);
                     FaceId.push_back(faceIndices);
@@ -316,7 +326,7 @@ bool writeMesh(Vertex *vertices, unsigned int ImageWidth, unsigned int ImageHeig
             }
         }
     }
-
+    
     // Write off file
     std::ofstream outFile(filename);
     if (!outFile.is_open())
@@ -327,19 +337,19 @@ bool writeMesh(Vertex *vertices, unsigned int ImageWidth, unsigned int ImageHeig
     outFile << nVertices << " " << nTriangles << " 0" << std::endl;
 
     // Save vertices.
-    for (unsigned int i = 0; i < nVertices; i++)
-    {
-        const auto &vertex = vertices[i];
-        if (vertex.position.allFinite())
+    for (unsigned int i = 0; i < ImageHeight; i++)
+      for (unsigned int j = 0; j < ImageWidth; j++)
+	{
+	  const auto &vertex = vertices[i * ImageWidth + j];
+	  if (vertex.position.allFinite())
             outFile << vertex.position.x() << " " << vertex.position.y() << " " << vertex.position.z() << " "
                     << int(vertex.color.x()) << " " << int(vertex.color.y()) << " " << int(vertex.color.z()) << " " << int(vertex.color.w()) << std::endl;
-        else
-            outFile << "0.0 0.0 0.0 0 0 0 0" << std::endl;
-    }
+	}
+    std::cout << "nVertices: " << nVertices << std::endl;
     // Save faces.
     for (Vector3i &faceIndices : FaceId)
     {
-        outFile << "3 " << faceIndices[0] << " " << faceIndices[1] << " " << faceIndices[2] << std::endl;
+      outFile << "3 " << indexToVertexId[faceIndices[0]] << " " << indexToVertexId[faceIndices[1]] << " " << indexToVertexId[faceIndices[2]] << std::endl;
     }
 
     // Close file.
