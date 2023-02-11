@@ -123,21 +123,10 @@ struct MSEextrinsic matching_method_compare(std::vector<cv::KeyPoint> keypoints1
 {
 
     //std::cout << "Evaluate " << DESCRIPTOR_METHOD << " description method........." << std::endl;
+
+    cv::Mat fundamental_matrix, mask;
     std::vector<cv::Point2f> points1, points2;
-    for (int i = 0; i < good_matches.size(); i++)
-    {
-
-        points1.push_back(keypoints1[good_matches[i].queryIdx].pt);
-        points2.push_back(keypoints2[good_matches[i].trainIdx].pt);
-    }
-
-    // if (points1.size() != points2.size() || points1.size() < 5) {
-    //     std::cout << "Error: The number of points for computing essential matrix is not enough." << std::endl;
-    //     return 1;
-    // }
-
-    cv::Mat fundamental_matrix;
-    find_fundamental_matrix(keypoints1, keypoints2, good_matches, fundamental_matrix);
+    find_fundamental_matrix(keypoints1, keypoints2, good_matches, fundamental_matrix, mask, points1, points2);
 
     // Using essential matrix to compute rotation and translation matrix
     // cv::Mat essential_matrix = camParams.left_camera_matrix.t() * fundamental_matrix * camParams.right_camera_matrix;

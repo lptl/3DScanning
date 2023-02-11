@@ -10,22 +10,13 @@ find_package(Eigen3 CONFIG REQUIRED)
 find_package(Flann CONFIG REQUIRED)
 find_package(Ceres CONFIG REQUIRED)
 find_package(freeimage CONFIG REQUIRED)
+find_package(PNG REQUIRED)
 find_package(OpenCV CONFIG REQUIRED)
 
+FILE(GLOB MyLibs *.h)
+
 set(HEADER_FILES 
-    Libs/Eigen.h 
-    Libs/SimpleMesh.h 
-    Libs/PointCloud.h 
-    Libs/VirtualSensor.h 
-    Libs/NearestNeighbour.h 
-    Libs/ProcrustesAligner.h 
-    Libs/ICPOptimizer.h 
-    Libs/FreeImageHelper.h
-    Libs/OpenCVLib.h
-    Libs/Types.h
-    Libs/Utils.h
-    Libs/Pipeline.h
-    Libs/Evaluate.h
+    ${MyLibs}
 )
 
 set(SOURCE_FILES 
@@ -37,4 +28,5 @@ target_link_libraries(StereoReconstruction PRIVATE Eigen3::Eigen)
 target_link_libraries(StereoReconstruction PRIVATE flann::flann flann::flann_cpp)
 target_link_libraries(StereoReconstruction PRIVATE ceres Ceres::ceres)
 target_link_libraries(StereoReconstruction PRIVATE freeimage::FreeImage freeimage::FreeImagePlus)
+target_link_libraries(StereoReconstruction PRIVATE PNG::PNG)
 target_link_libraries(StereoReconstruction PRIVATE ${OpenCV_LIBS})
