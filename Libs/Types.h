@@ -27,6 +27,9 @@ struct cameraParams
     cv::Mat right_to_left_R;
     cv::Mat right_to_left_T;
 
+    cv::Mat left_camera_extrinsic_reverse;
+    cv::Mat right_camera_extrinsic_reverse;
+
     double baseline;
     double fX;
     double fY;

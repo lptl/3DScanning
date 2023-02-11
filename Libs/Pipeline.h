@@ -16,12 +16,12 @@
 
 #define DEBUG 0		      // 1, output debug information, 0, no output
 #define TEST 1                  // 0: no test, 1: test 2 images only
-#define USE_GROUNDTRUTH 0  // 0: no groundtruth, 1: use groundtruth disparity, 2: use groundtruth depth
+#define USE_GROUNDTRUTH 2  // 0: no groundtruth, 1: use groundtruth disparity, 2: use groundtruth depth
 
 #define RECONSTRUCT 0            // 0: no final model reconstruction, 1: final model reconstruction
 #define COMPARE_DENSE_MATCHING 0 // 0: no comparison, 1: comparison, compare dense matching with groundtruth
 
-#define DESCRIPTOR_METHOD "orb"            // harris, sift, surf, orb, brisk, shi-tomasi, fast
+#define DESCRIPTOR_METHOD "sift"            // harris, sift, surf, orb, brisk, shi-tomasi, fast
 #define DESCRIPTOR_MATCHING_METHOD "flann" // flann, brute_force
 #define FUNDAMENTAL_MATRIX_METHOD "ransac" // ransac, lmeds, 7point, 8point
 #define DENSE_MATCHING_METHOD "sgbm"       // bm, sgbm
@@ -30,9 +30,12 @@
 #define USE_POINT_TO_PLANE false
 #define RECONSTRUCT_METHOD "icp"      // icp, poisson
 #define MERGE_METHOD "frame-to-frame" // frame-to-frame, frame-to-model
+#define USE_REPROJECT false 		 // true, false
 
 std::string MODELS_DIR = "Output/pointclouds/";
 std::string PROJECT_PATH = "/Users/k/Desktop/Courses/3dscanning/3DScanning/";
+
+cv::Mat Q_matrix;
 
 void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct detectResult *result)
 {
@@ -321,6 +324,8 @@ void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoi
 	}
         // // stereoRectify(camParams.left_camera_matrix, camParams.left_distortion_coeffs, camParams.right_camera_matrix, camParams.right_distortion_coeffs, img1.size(), rotation_matrix, translation_matrix, R1, R2, P1, P2, Q);
         stereoRectify(camParams.left_camera_matrix, camParams.left_distortion_coeffs, camParams.right_camera_matrix, camParams.right_distortion_coeffs, img1.size(), camParams.left_to_right_R, camParams.left_to_right_T, R1, R2, P1, P2, Q);
+	Q_matrix = Q;
+	
         cv::Mat rmap[2][2];
         initUndistortRectifyMap(camParams.left_camera_matrix, camParams.left_distortion_coeffs, R1, P1, img1.size(), CV_16SC2, rmap[0][0], rmap[0][1]);
         initUndistortRectifyMap(camParams.right_camera_matrix, camParams.right_distortion_coeffs, R2, P2, img1.size(), CV_16SC2, rmap[1][0], rmap[1][1]);
@@ -412,20 +417,149 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp)
     wls_filter->setLambda(lambda);
     wls_filter->setSigmaColor(sigma);
     wls_filter->filter(left_disp, left, disp, right_disp);
-    disp.convertTo(disp, CV_16U);
+    // disp.convertTo(disp, CV_16U);
     // disp.convertTo(disp, CV_64F, 1.0 / 16.0);
     if (DEBUG >= 2)
         std::cout << "Disparity map: " << disp << std::endl;
     return;
 }
 
+void compute_disparity_map_modified(cv::Mat left, cv::Mat right, cv::Mat &disp, cv::Mat &disp_vis, cv::Rect roi1=cv::Rect(), cv::Rect roi2=cv::Rect())
+{
+    cv::Mat left_gray, right_gray;
+    cvtColor(left, left_gray, cv::COLOR_BGR2GRAY);
+    cvtColor(right, right_gray, cv::COLOR_BGR2GRAY);
+    int min_disp = 5, max_disp = 80, wsize = 9;
+    if (compare_string(DENSE_MATCHING_METHOD, "bm"))
+    {
+        cv::Ptr<cv::StereoBM> left_matcher = cv::StereoBM::create(max_disp, wsize);
+        left_matcher->setROI1(roi1);
+        left_matcher->setROI2(roi2);
+        left_matcher->setPreFilterCap(31);
+        left_matcher->setTextureThreshold(10);
+        left_matcher->setUniquenessRatio(15);
+        left_matcher->setSpeckleWindowSize(100);
+        left_matcher->setSpeckleRange(32);
+        left_matcher->setDisp12MaxDiff(1);
+        if (!USE_POST_FILTERING)
+        {
+            left_matcher->compute(left_gray, right_gray, disp);
+        }
+        else
+        {
+            double lambda = 8000.0, sigma = 1.2;
+            cv::Ptr<cv::ximgproc::DisparityWLSFilter> wls_filter = cv::ximgproc::createDisparityWLSFilter(left_matcher);
+            wls_filter->setLambda(lambda);
+            wls_filter->setSigmaColor(sigma);
+            cv::Ptr<cv::StereoMatcher> right_matcher = cv::ximgproc::createRightMatcher(left_matcher);
+            cv::Mat left_disp, right_disp;
+            left_matcher->compute(left_gray, right_gray, left_disp);
+            right_matcher->compute(right_gray, left_gray, right_disp);
+            wls_filter->filter(left_disp, left_gray, disp, right_disp);
+        }
+        cv::ximgproc::getDisparityVis(disp, disp_vis);
+        //cv::applyColorMap(disp_vis, disp_vis, cv::COLORMAP_JET);
+    }
+    else if (compare_string(DENSE_MATCHING_METHOD, "sgbm"))
+    {
+        cv::Ptr<cv::StereoSGBM> left_matcher = cv::StereoSGBM::create(min_disp, max_disp, wsize);
+        left_matcher->setP1(24 * wsize * wsize);
+        left_matcher->setP2(96 * wsize * wsize);
+        left_matcher->setDisp12MaxDiff(1);
+        left_matcher->setUniquenessRatio(15);
+        left_matcher->setSpeckleWindowSize(0);
+        left_matcher->setSpeckleRange(2);
+        left_matcher->setPreFilterCap(63);
+        left_matcher->setMode(cv::StereoSGBM::MODE_SGBM);
+        if (!USE_POST_FILTERING)
+        {
+            left_matcher->compute(left, right, disp);
+        }
+        else
+        {
+            double lambda = 8000.0, sigma = 1.5;
+            cv::Ptr<cv::ximgproc::DisparityWLSFilter> wls_filter = cv::ximgproc::createDisparityWLSFilter(left_matcher);
+            wls_filter->setLambda(lambda);
+            wls_filter->setSigmaColor(sigma);
+            cv::Ptr<cv::StereoMatcher> right_matcher = cv::ximgproc::createRightMatcher(left_matcher);
+            cv::Mat left_disp, right_disp;
+            left_matcher->compute(left, right, left_disp);
+            right_matcher->compute(right, left, right_disp);
+            wls_filter->filter(left_disp, left_gray, disp, right_disp);
+            disp.setTo(-16, disp == -32768);
+        }
+        cv::ximgproc::getDisparityVis(disp, disp_vis);
+        //cv::applyColorMap(disp_vis, disp_vis, cv::COLORMAP_JET);
+    }
+    else if (compare_string(DENSE_MATCHING_METHOD, "qd"))
+    {
+      // cv::Ptr<cv::stereo::QuasiDenseStereo> left_matcher = cv::stereo::QuasiDenseStereo::create(left.size());
+      // left_matcher->process(left, right);
+      // disp = left_matcher->getDisparity();
+      // disp.copyTo(disp_vis);
+      return;
+    }
+    else
+    {
+        std::cout << "No such dense matching method." << std::endl;
+        return;
+    }
+    double min_z, max_z;
+    cv::minMaxLoc(disp, &min_z, &max_z);
+    std::cout << "minimum disparity: " << min_z << std::endl << "maximum disparity: " << max_z << std::endl;
+    return;
+}
+
+void reproject_to_3d(cv::Mat disparityMap, cv::Mat rgb_map, struct cameraParams camParams){
+  disparityMap.convertTo(disparityMap, CV_32FC1, 1.0 / 16.0);
+  cv::Mat xyz;
+  std::cout << "Q_matrix: " << Q_matrix << std::endl;
+  Vertex *vertices = new Vertex[disparityMap.rows * disparityMap.cols];
+  cv::reprojectImageTo3D(disparityMap, xyz, Q_matrix, true);
+  // read x, y, z values
+  for (int i = 0; i < xyz.rows; i++)
+  {
+    for (int j = 0; j < xyz.cols; j++)
+    {
+      cv::Vec3f point = xyz.at<cv::Vec3f>(i, j);
+      double depth = point[2];
+      int idx = i * disparityMap.cols + j;
+      if (depth != MINF && depth != 0 && depth < 5000 && depth != -1)
+	{ // range filter: (0, 1 meter)
+	  float X_c = (float(j) - camParams.cX) * depth / camParams.fX;
+	  float Y_c = (float(i) - camParams.cY) * depth / camParams.fY;
+	  Vector4f P_c = Vector4f(X_c, Y_c, depth, 1);
+	  
+	  vertices[idx].position = P_c;
+	  unsigned char R = rgb_map.at<cv::Vec3b>(i, j)[2];
+	  unsigned char G = rgb_map.at<cv::Vec3b>(i, j)[1];
+	  unsigned char B = rgb_map.at<cv::Vec3b>(i, j)[0];
+	  unsigned char A = 255;
+	  vertices[idx].color = Vector4uc(R, G, B, A);
+	}
+      else
+	{
+	  vertices[idx].position = Vector4f(MINF, MINF, MINF, MINF);
+	  vertices[idx].color = Vector4uc(0, 0, 0, 0);
+	}
+    }
+  }
+  // TODO: project the vertices from camera space to world space
+  std::stringstream ss;
+  ss << PROJECT_PATH << "Output/pointclouds/reproject-3d.off";
+  writeMesh(vertices, disparityMap.cols, disparityMap.rows, ss.str());
+  return;
+}
+
 void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams camParams, cv::Mat &depthMap)
 {
+  // TODO: the disparity map are calculated on rectified images, so the depth map should be calculated on rectified images
+  // if use original images, the depth map will be wrong, triangulation should be used to calculate the depth map
     if (USE_GROUNDTRUTH == 1)
     {
-        std::string groundtruth_disparity_map_dir = PROJECT_PATH + "Data/" + DATASET + "/data_scene_flow/training/disp_noc_0/";
+        std::string groundtruth_disparity_map_dir = PROJECT_PATH + "Data/kitti" + "/data_scene_flow/training/disp_noc_0/";
         std::string image_name = "000015_10.png";
-        cv::Mat disparity_Map = cv::imread(groundtruth_disparity_map_dir + image_name, cv::IMREAD_ANYDEPTH);
+        cv::Mat disparity_Map = cv::imread(groundtruth_disparity_map_dir + image_name, cv::IMREAD_UNCHANGED);
         int width = disparity_Map.cols, height = disparity_Map.rows;
         depthMap = cv::Mat(height, width, CV_64F);
         for (int h = 0; h < height; h++)
@@ -453,7 +587,8 @@ void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams 
             if (disparity == 0)
                 depthMap.at<double>(h, w) = 0;
             else{
-	      depthMap.at<double>(h, w) = 256.0 * camParams.fX * camParams.baseline / (disparity * 6000);
+	      // depthMap.at<double>(h, w) = 256.0 * camParams.fX * camParams.baseline / (disparity * 6000);
+	      depthMap.at<double>(h, w) = (16.0 * camParams.fX * camParams.baseline) / (float)disparity;
 	    }
         }
     }
@@ -463,11 +598,11 @@ void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams 
 void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct cameraParams camParams, std::string filename)
 {
   if (USE_GROUNDTRUTH == 2){
-    std::string groundtruth_depth_map = PROJECT_PATH + "Data/" + DATASET + "/frame-000080.depth.png";
+    std::string groundtruth_depth_map = PROJECT_PATH + "Data/bricks-rgbd" + "/frame-000755.depth.png";
     cv::Mat depth_image = cv::imread(groundtruth_depth_map, cv::IMREAD_UNCHANGED);
-    depth_image.convertTo(depth_image, CV_32FC1, (1.0 / 1000.0));
+    depth_image.convertTo(depth_image, CV_32FC1, 1.0 / 1000.0);
     
-    std::string color_image_path = PROJECT_PATH + "Data/" + DATASET + "/frame-000080.color.png";
+    std::string color_image_path = PROJECT_PATH + "Data/" + DATASET + "/frame-000755.color.png";
     cv::Mat color_image = cv::imread(color_image_path, cv::IMREAD_UNCHANGED);
 
     cv::Mat map_x, map_y;
@@ -482,14 +617,22 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
         0, 0, 1);
     depth_intrinsics.convertTo(depth_intrinsics, CV_32F);
     color_intrinsics.convertTo(color_intrinsics, CV_32F);
+    // cv::resize(depth_image, color_image, cv::Size(color_image.cols, color_image.rows));
     cv::initUndistortRectifyMap(depth_intrinsics, cv::Mat::zeros(5, 1, CV_32F), cv::Mat::eye(3, 3, CV_32F), color_intrinsics, color_image.size(), CV_16SC2, map_x, map_y);
+    // cv::initUndistortRectifyMap(color_intrinsics, cv::Mat::zeros(5, 1, CV_32F), cv::Mat::eye(3, 3, CV_32F), depth_intrinsics, depth_image.size(), CV_16SC2, map_x, map_y);
     // Align the depth image to the color image
     cv::Mat depth_aligned;
+    // cv::Mat color_aligned;
     cv::remap(depth_image, depth_aligned, map_x, map_y, cv::INTER_LINEAR);
-
+    // cv::remap(color_image, color_aligned, map_x, map_y, cv::INTER_LINEAR);
     depth_aligned.convertTo(depth_aligned, CV_64F);
+    // color_aligned.convertTo(color_aligned, CV_64F);
     depth_map = depth_aligned;
+    // depth_map = depth_image;
+    // rgb_map = color_aligned;
     rgb_map = color_image;
+    std::cout << "rgb map size: " << rgb_map.size() << std::endl;
+    std::cout << "depth map size: " << depth_map.size() << std::endl;
 
     camParams.cX = 647.75;
     camParams.cY = 483.75;
@@ -516,14 +659,28 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
 	    // float depth = (float)(depth_map.at<uint16_t>(h, w));
             if (depth != MINF && depth != 0 && depth < 5000 && depth != -1)
             { // range filter: (0, 1 meter)
+	      double X_c = (double(w) - camParams.cX) * depth / camParams.fX;
+	      double Y_c = (double(h) - camParams.cY) * depth / camParams.fY;
+
+	      cv::Mat point = (cv::Mat_<double>(4, 1) << X_c, Y_c, depth, 1);
+	      point.convertTo(point, CV_64FC1);
+	      // std::cout << "point: " << point << std::endl;
+	      // std::cout << "rgb map: " << camParams.left_camera_extrinsic_reverse << std::endl;
+	      cv::Mat point_world = camParams.left_camera_extrinsic_reverse * point;
+	      X_c = point_world.at<double>(0, 0);
+	      Y_c = point_world.at<double>(1, 0);
+	      depth = point_world.at<double>(2, 0);
+	      // TODO: DON"T CONVERT DOUBLE TO FLOAT IMPLICITLY, IT WILL CAUSE ERROR
+	      // std::cout << "point world: " << point_world << std::endl;
+	      // std::cout << "x y z: " << X_c << " " << Y_c << " " << depth << std::endl;
+	      
 	      if(depth > max_depth)
 		max_depth = depth;
 	      if(min_depth > depth)
 		min_depth = depth;
 	      average_depth += depth;
 	      valid_depth_count++;
-	      float X_c = (float(w) - camParams.cX) * depth / camParams.fX;
-	      float Y_c = (float(h) - camParams.cY) * depth / camParams.fY;
+	      
 	      Vector4f P_c = Vector4f(X_c, Y_c, depth, 1);
 
 	      vertices[idx].position = P_c;

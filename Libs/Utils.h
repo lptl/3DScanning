@@ -86,18 +86,18 @@ void readMatrixFromFile(std::string filename, int rows, int cols, cv::Mat& matri
 }
 
 void getCameraParamsBricks(std::string color_intrinsics, std::string depth_intrinsics, std::string left, std::string right, struct cameraParams *camParams){
-  cv::Mat color_intrinsic_matrix(4, 4, CV_64F, cv::Scalar::all(0));
-  cv::Mat depth_intrinsic_matrix(4, 4, CV_64F, cv::Scalar::all(0));
-  cv::Mat left_extrinsic_matrix(4, 4, CV_64F, cv::Scalar::all(0));
-  cv::Mat right_extrinsic_matrix(4, 4, CV_64F, cv::Scalar::all(0));
+  cv::Mat color_intrinsic_matrix(4, 4, CV_64FC1, cv::Scalar::all(0));
+  cv::Mat depth_intrinsic_matrix(4, 4, CV_64FC1, cv::Scalar::all(0));
+  cv::Mat left_extrinsic_matrix(4, 4, CV_64FC1, cv::Scalar::all(0));
+  cv::Mat right_extrinsic_matrix(4, 4, CV_64FC1, cv::Scalar::all(0));
 
   readMatrixFromFile(color_intrinsics, 4, 4, color_intrinsic_matrix);
   readMatrixFromFile(depth_intrinsics, 4, 4, depth_intrinsic_matrix);
   readMatrixFromFile(left, 4, 4, left_extrinsic_matrix);
   readMatrixFromFile(right, 4, 4, right_extrinsic_matrix);
 
-  cv::Mat color_intrinsic(3, 3, CV_64F, cv::Scalar::all(0));
-  cv::Mat depth_intrinsic(3, 3, CV_64F, cv::Scalar::all(0));
+  cv::Mat color_intrinsic(3, 3, CV_64FC1, cv::Scalar::all(0));
+  cv::Mat depth_intrinsic(3, 3, CV_64FC1, cv::Scalar::all(0));
   
   color_intrinsic.at<double>(0, 0) = color_intrinsic_matrix.at<double>(0, 0);
   color_intrinsic.at<double>(0, 1) = color_intrinsic_matrix.at<double>(0, 1);
@@ -128,14 +128,49 @@ void getCameraParamsBricks(std::string color_intrinsics, std::string depth_intri
   camParams->cY = 483.75;
 
   //TODO: what about the baseline
-  camParams->baseline = 0.534;
+  // camParams->baseline = 0.534;
+
+  cv::Mat left_R(3, 3, CV_64FC1, cv::Scalar::all(0));
+  cv::Mat left_T(3, 1, CV_64FC1, cv::Scalar::all(0));
+  cv::Mat right_R(3, 3, CV_64FC1, cv::Scalar::all(0));
+  cv::Mat right_T(3, 1, CV_64FC1, cv::Scalar::all(0));
+
+  left_R = left_extrinsic_matrix(cv::Rect(0, 0, 3, 3));
+  left_T = left_extrinsic_matrix(cv::Rect(3, 0, 1, 3));
+  right_R = right_extrinsic_matrix(cv::Rect(0, 0, 3, 3));
+  right_T= right_extrinsic_matrix(cv::Rect(3, 0, 1, 3));
+
+  std::cout << "left_R: " << left_R << std::endl;
+  std::cout << "left_T: " << left_T << std::endl;
+  std::cout << "right_R: " << right_R << std::endl;
+  std::cout << "right_T: " << right_T << std::endl;
+  
+  cv::Mat c_left = -left_R.t() * left_T;
+  cv::Mat c_right = -right_R.t() * right_T;
+  std::cout << "c_left: " << c_left << std::endl;
+  std::cout << "c_right: " << c_right << std::endl;
+  camParams->baseline = cv::norm(c_left - c_right);
+  std::cout << "baseline: " << camParams->baseline << std::endl;
+  
   camParams->left_distortion_coeffs = cv::Mat::zeros(5, 1, CV_32F);
   camParams->right_distortion_coeffs = cv::Mat::zeros(5, 1, CV_32F);
 
-  cv::Mat left_to_right = right_extrinsic_matrix.inv() * left_extrinsic_matrix;
+  cv::Mat left_real_extrinsic = cv::Mat::eye(4, 4, CV_64F);
+  cv::Mat right_real_extrinsic = cv::Mat::eye(4, 4, CV_64F);
+  left_real_extrinsic(cv::Rect(0, 0, 3, 3)) = left_R.t();
+  left_real_extrinsic(cv::Rect(3, 0, 1, 3)) = -left_R.t() * left_T;
+  right_real_extrinsic(cv::Rect(0, 0, 3, 3)) = right_R.t();
+  right_real_extrinsic(cv::Rect(3, 0, 1, 3)) = -right_R.t() * right_T;
+  std::cout << "left_real_extrinsic: " << left_real_extrinsic << std::endl;
+  std::cout << "right_real_extrinsic: " << right_real_extrinsic << std::endl;
+
+  camParams->left_camera_extrinsic_reverse = left_extrinsic_matrix;
+  camParams->right_camera_extrinsic_reverse = right_extrinsic_matrix;
+
+  cv::Mat left_to_right = right_real_extrinsic * left_real_extrinsic.inv();
   camParams->left_to_right_R = left_to_right(cv::Rect(0, 0, 3, 3));
   camParams->left_to_right_T = left_to_right(cv::Rect(3, 0, 1, 3));
-  cv::Mat right_to_left = left_extrinsic_matrix.inv() * right_extrinsic_matrix;
+  cv::Mat right_to_left = left_real_extrinsic * right_real_extrinsic.inv();
   camParams->right_to_left_R = right_to_left(cv::Rect(0, 0, 3, 3));
   camParams->right_to_left_T = right_to_left(cv::Rect(3, 0, 1, 3));
 
@@ -269,8 +304,9 @@ void getCameraParamsKITTI(std::string calib_file, struct cameraParams *camParams
     return;
 }
 
-bool writeMesh(Vertex *vertices, unsigned int ImageWidth, unsigned int ImageHeight, const std::string &filename, float edgeThreshold = 0.005f)
+bool writeMesh(Vertex *vertices, unsigned int ImageWidth, unsigned int ImageHeight, const std::string &filename, float edgeThreshold = 0.01f)
 {
+  // bricks-rgbd: 0.005f
     unsigned int nVertices = 0;
     unsigned int nTriangles = 0;
     std::vector<Vector3i> FaceId;

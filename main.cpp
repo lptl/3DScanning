@@ -44,18 +44,34 @@ void process_pair_images(std::string filename1, std::string filename2, struct ca
     imwrite(PROJECT_PATH + "Output/left_rectified/left-" + img1_name, left_rectified);
     imwrite(PROJECT_PATH + "Output/right_rectified/right-" + img2_name, right_rectified);
 
+    // left_rectified = left;
+    // right_rectified = right;
+
     if(DEBUG)
       std::cout << "Computing disparity map..." << std::endl;
-    cv::Mat disp = cv::Mat(left_rectified.rows, left_rectified.cols, CV_16U);
-    compute_disparity_map(left_rectified, right_rectified, disp);
+    // cv::Mat disp = cv::Mat(left_rectified.rows, left_rectified.cols, CV_16U);
+    cv::Mat disp, disp_vis;
+    compute_disparity_map_modified(left_rectified, right_rectified, disp, disp_vis);
+    // compute_disparity_map(left_rectified, right_rectified, disp);
+    // imwrite(PROJECT_PATH + "Output/disparity_map/" + img1_name, disp);
+    // cv::Mat disp_vis;
+    // cv::ximgproc::getDisparityVis(disp, disp_vis);
     imwrite(PROJECT_PATH + "Output/disparity_map/" + img1_name, disp);
 
-    if(DEBUG)
-      std::cout << "Computing depth map and generating point cloud..." << std::endl;
-    cv::Mat depthMap = cv::Mat::zeros(disp.rows, disp.cols, CV_64F);
-    get_depth_map_from_disparity_map(disp, camParams, depthMap);
-    get_point_cloud_from_depth_map(depthMap, left_rectified, camParams, std::to_string(result1.filetype.number));
-
+    if(USE_REPROJECT)
+    {
+      if(DEBUG)
+	std::cout << "Reprojecting disparity map and generating point cloud..." << std::endl;
+      reproject_to_3d(disp, left_rectified, camParams);
+    }
+    else {
+      std::cout << "Without using reproject to 3d" << std::endl;
+      if(DEBUG)
+	std::cout << "Computing depth map and generating point cloud..." << std::endl;
+      cv::Mat depthMap = cv::Mat::zeros(disp.rows, disp.cols, CV_64F);
+      get_depth_map_from_disparity_map(disp, camParams, depthMap);
+      get_point_cloud_from_depth_map(depthMap, left_rectified, camParams, std::to_string(result1.filetype.number));
+    }
     std::cout << "Processed " << filename1 << " and " << filename2 << std::endl
               << std::endl;
     return;
