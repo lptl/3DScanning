@@ -41,6 +41,4 @@ Rectification
 Sparse matching
 ![Sparse Matching](sparse.png)
 
-Dense matching
-![Dense Matching](sparse.png)
 
