@@ -12,6 +12,12 @@ The project will implement various stereo-matching algorithms such as StereoSGBM
 ![Pipeline Review](pipeline_neu.png)
 
 ## Running the code
+'''
+git clone https://github.com/lptl/3DScanning.git
+mkdir build && cd build
+cmake .. && make
+./StereoReconstruction
+'''
 
 * See defined macros in `main.cpp` and `Libs/Pipeline.h` to decide the whole running procedure.
 
