@@ -5,10 +5,6 @@
 * [Weekly Report](https://docs.google.com/document/d/1K6K0ElHKk27aSyPWNIXJ57GBT3060mLvXEGucMk_U0U/edit)
 * TA's feedback
 
-## Dataset
-
-* TUM Dataset: https://vision.in.tum.de/_media/data/datasets/intrinsic3d/bricks-rgbd.zip
-* Kitti Dataset: https://www.cvlibs.net/datasets/kitti/eval_scene_flow.php?benchmark=stereo
 
 ## Project's overview
 This project proposes a pipeline for comparing different stereo reconstruction methods and has already been tested on two datasets with successful results.  The pipeline involves the following steps: camera calibration to remove image distortion, key points extraction and matching to rectify images, dense stereo matching to calculate disparity maps and obtain depth information, and final 3D model generation from the calculated depth maps.
