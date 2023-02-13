@@ -15,15 +15,14 @@
 #define DATASET "bricks-rgbd"                    // kitti, bricks-rgbd
 
 #define DEBUG 0		      // 1, output debug information, 0, no output
-#define TEST 1                  // 0: no test, 1: test 2 images only
-#define USE_GROUNDTRUTH 2  // 0: no groundtruth, 1: use groundtruth disparity, 2: use groundtruth depth
+#define TEST 0                  // 0: no test, 1: test 2 images only
+#define USE_GROUNDTRUTH 0  // 0: no groundtruth, 1: use groundtruth disparity, 2: use groundtruth depth
 
 #define RECONSTRUCT 0            // 0: no final model reconstruction, 1: final model reconstruction
-#define COMPARE_DENSE_MATCHING 0 // 0: no comparison, 1: comparison, compare dense matching with groundtruth
 
-#define DESCRIPTOR_METHOD "sift"            // harris, sift, surf, orb, brisk, shi-tomasi, fast
+#define DESCRIPTOR_METHOD "brisk"            // harris, sift, surf, orb, brisk, shi-tomasi, fast
 #define DESCRIPTOR_MATCHING_METHOD "flann" // flann, brute_force
-#define FUNDAMENTAL_MATRIX_METHOD "ransac" // ransac, lmeds, 7point, 8point
+#define FUNDAMENTAL_MATRIX_METHOD "8point" // ransac, lmeds, 7point, 8point
 #define DENSE_MATCHING_METHOD "sgbm"       // bm, sgbm
 #define USE_POST_FILTERING true
 #define USE_LINEAR_ICP true
@@ -31,9 +30,14 @@
 #define RECONSTRUCT_METHOD "icp"      // icp, poisson
 #define MERGE_METHOD "frame-to-frame" // frame-to-frame, frame-to-model
 #define USE_REPROJECT false 		 // true, false
+#define GENERATE_POINTCLOUD true      // true, false
 
 std::string MODELS_DIR = "Output/pointclouds/";
 std::string PROJECT_PATH = "/Users/k/Desktop/Courses/3dscanning/3DScanning/";
+std::vector<double> average_depth_error;
+std::vector<std::string> image_names;
+std::vector<double> average_rotation_error;
+std::vector<double> average_translation_error;
 
 cv::Mat Q_matrix;
 
@@ -42,16 +46,14 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
 
     if (compare_string(DESCRIPTOR_METHOD, "harris"))
     {
-        int blocksize = 2, aperture_size = 3, thresh = 200;
+        int blocksize = 2, aperture_size = 3, thresh = 400;
         double k = 0.04;
         cv::Mat img_gray, distance_norm, distance_norm_scaled;
         cvtColor(img, img_gray, cv::COLOR_BGR2GRAY);
-        cv::Mat distance = cv::Mat::zeros(img.size(), CV_32FC1);
+        cv::Mat distance = cv::Mat::zeros(img.size(), CV_32F);
         cornerHarris(img_gray, distance, blocksize, aperture_size, k);
-        normalize(distance, distance_norm, 0, 255, cv::NORM_MINMAX, CV_32FC1, cv::Mat());
+        normalize(distance, distance_norm, 0, 255, cv::NORM_MINMAX, CV_32F, cv::Mat());
         convertScaleAbs(distance_norm, distance_norm_scaled);
-        // namedWindow("Harris Corner", WINDOW_AUTOSIZE);
-        // imshow("Harris Corner", distance_norm_scaled);
         std::vector<cv::KeyPoint> keypoints;
         for (int i = 0; i < distance_norm.rows; i++)
         {
@@ -59,16 +61,11 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
             {
                 if ((int)distance_norm.at<float>(i, j) > thresh)
                 {
-                    // TODO: how to decide the size of keypoints?
                     keypoints.push_back(cv::KeyPoint(j * 1.0, i * 1.0, 2.0));
                     circle(distance_norm_scaled, cv::Point(j, i), 5, cv::Scalar(0), 2, 8, 0);
                 }
             }
         }
-        // cv::Mat keypoints_on_image;
-        // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
-        // imwrite(PROJECT_PATH + "harris_corner_unlabeled/" + img_name, distance_norm);
-        // https://docs.opencv.org/3.4/d4/d7d/tutorial_harris_detector.html
 
         result->keypoints = keypoints;
         int nfeatures = 0, nOctaveLayers = 3;
@@ -76,7 +73,7 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
         cv::Ptr<cv::SIFT> sift_detector = cv::SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
         cv::Mat descriptors;
         sift_detector->compute(img, keypoints, descriptors);
-        result->descriptors = descriptors; // TODO: use the sift descriptor for every keypoint detecting method
+        result->descriptors = descriptors;
         result->filetype = extract_file_name(img_name);
     }
     else if (compare_string(DESCRIPTOR_METHOD, "sift"))
@@ -87,35 +84,23 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
         std::vector<cv::KeyPoint> keypoints;
         cv::Mat descriptors;
         sift_detector->detectAndCompute(img, cv::Mat(), keypoints, descriptors);
-        // cv::Mat keypoints_on_image;
-        // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
-        // imwrite(PROJECT_PATH + "sift/" + img_name, keypoints_on_image);
-        // https://docs.opencv.org/3.4/d7/d66/tutorial_feature_detection.html
-
         result->keypoints = keypoints;
         result->descriptors = descriptors;
         result->filetype = extract_file_name(img_name);
     }
     else if (compare_string(DESCRIPTOR_METHOD, "surf"))
     {
-        // std::cout << "detecting surf keypoints and descriptors" << std::endl;
         int minHessian = 400;
         cv::Ptr<cv::xfeatures2d::SURF> surf_detector = cv::xfeatures2d::SURF::create(minHessian);
         std::vector<cv::KeyPoint> keypoints;
         cv::Mat descriptors;
         surf_detector->detectAndCompute(img, cv::Mat(), keypoints, descriptors);
-        // cv::Mat keypoints_on_image;
-        // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
-        // imwrite(PROJECT_PATH + "surf/" + img_name, keypoints_on_image);
-        // https://docs.opencv.org/3.4/d7/d66/tutorial_feature_detection.html
-
         result->keypoints = keypoints;
         result->descriptors = descriptors;
         result->filetype = extract_file_name(img_name);
     }
     else if (compare_string(DESCRIPTOR_METHOD, "orb"))
     {
-        // std::cout << "detecting orb keypoints and descriptors" << std::endl;
         int nfeatures = 500;
         float scaleFactor = 1.2f;
         int nlevels = 8;
@@ -128,11 +113,6 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
         std::vector<cv::KeyPoint> keypoints;
         cv::Mat descriptors;
         orb_detector->detectAndCompute(img, cv::Mat(), keypoints, descriptors);
-        // cv::Mat keypoints_on_image;
-        // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
-        // imwrite(PROJECT_PATH + "orb/" + img_name, keypoints_on_image);
-        // https://docs.opencv.org/3.4/d7/d66/tutorial_feature_detection.html
-
         result->keypoints = keypoints;
         result->descriptors = descriptors;
         result->filetype = extract_file_name(img_name);
@@ -146,11 +126,6 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
         std::vector<cv::KeyPoint> keypoints;
         cv::Mat descriptors;
         brisk_detector->detectAndCompute(img, cv::Mat(), keypoints, descriptors);
-        // cv::Mat keypoints_on_image;
-        // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
-        // imwrite(PROJECT_PATH + "brisk/" + img_name, keypoints_on_image);
-        // https://docs.opencv.org/3.4/d7/d66/tutorial_feature_detection.html
-
         result->keypoints = keypoints;
         result->descriptors = descriptors;
         result->filetype = extract_file_name(img_name);
@@ -183,13 +158,6 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
             keypoints.push_back(cv::KeyPoint(corners[i].x, corners[i].y, 4.0));
         }
 
-        /*
-        cv::Mat image_with_keypoints;
-        drawKeypoints(img, keypoints, image_with_keypoints, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
-        imshow("Shi-Tomasi", image_with_keypoints);
-        waitKey();
-        */
-
         int nfeatures = 0, nOctaveLayers = 3;
         double contrastThreshold = 0.04, edgeThreshold = 10, sigma = 1.6;
         cv::Ptr<cv::SIFT> siftDetector = cv::SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
@@ -207,13 +175,6 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
         cvtColor(img, img_gray, cv::COLOR_BGR2GRAY);
         std::vector<cv::KeyPoint> keypoints;
         fastDetector->detect(img_gray, keypoints);
-
-        /*
-        cv::Mat image_with_keypoints;
-        drawKeypoints(img, keypoints, image_with_keypoints, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
-        imshow("FAST", image_with_keypoints);
-        waitKey();
-        */
         int nfeatures = 0, nOctaveLayers = 3;
         double contrastThreshold = 0.04, edgeThreshold = 10, sigma = 1.6;
         cv::Ptr<cv::SIFT> siftDetector = cv::SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
@@ -267,9 +228,8 @@ void match_descriptors(cv::Mat descriptors1, cv::Mat descriptors2, std::vector<c
     return;
 }
 
-void find_fundamental_matrix(std::vector<cv::KeyPoint> keypoints1, std::vector<cv::KeyPoint> keypoints2, std::vector<cv::DMatch> correspondences, cv::Mat &fundamental_matrix)
+int find_fundamental_matrix(std::vector<cv::KeyPoint> keypoints1, std::vector<cv::KeyPoint> keypoints2, cv::Mat& mask, std::vector<cv::DMatch> correspondences, cv::Mat &fundamental_matrix, std::vector<cv::Point2f>& points1, std::vector<cv::Point2f>& points2)
 {
-    std::vector<cv::Point2f> points1, points2;
     for (int i = 0; i < correspondences.size(); i++)
     {
         points1.push_back(keypoints1[correspondences[i].queryIdx].pt);
@@ -278,35 +238,34 @@ void find_fundamental_matrix(std::vector<cv::KeyPoint> keypoints1, std::vector<c
     if (points1.size() != points2.size() || points1.size() < 8)
     {
         std::cout << "Error: The number of points is not enough." << std::endl;
-        return;
+        return -1;
     }
 
     double ransacReprojThreshold = 3.0, confidence = 0.99;
     if (compare_string(FUNDAMENTAL_MATRIX_METHOD, "ransac"))
         // Need 15 points for RANSAC, maybe need to change the condition above
-        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_RANSAC, ransacReprojThreshold, confidence);
+      fundamental_matrix = findFundamentalMat(points1, points2, mask, cv::FM_RANSAC, ransacReprojThreshold, confidence);
     else if (compare_string(FUNDAMENTAL_MATRIX_METHOD, "lmeds"))
-        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_LMEDS, ransacReprojThreshold, confidence);
+      fundamental_matrix = findFundamentalMat(points1, points2, mask, cv::FM_LMEDS, ransacReprojThreshold, confidence);
     else if (compare_string(FUNDAMENTAL_MATRIX_METHOD, "7point"))
-        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_7POINT);
+      fundamental_matrix = findFundamentalMat(points1, points2, mask, cv::FM_7POINT);
     else if (compare_string(FUNDAMENTAL_MATRIX_METHOD, "8point"))
-        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_8POINT);
+      fundamental_matrix = findFundamentalMat(points1, points2, mask, cv::FM_8POINT);
     else
     {
         std::cout << "Error: No such fundamental matrix calculation method." << std::endl;
-        return;
+        return -2;
     }
-    return;
+    return 0;
 }
 
-void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoints1, std::vector<cv::KeyPoint> keypoints2, std::vector<cv::DMatch> good_matches, cv::Mat fundamental_matrix, struct cameraParams camParams, cv::Mat &left_rectified, cv::Mat &right_rectified)
+void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoints1, std::vector<cv::KeyPoint> keypoints2, std::vector<cv::DMatch> good_matches, cv::Mat fundamental_matrix, struct cameraParams camParams, cv::Mat &left_rectified, cv::Mat &right_rectified, std::vector<cv::Point2f> points1, std::vector<cv::Point2f> points2, cv::Mat mask)
 {
 
     if (!camParams.empty)
     {
         cv::Mat R1, R2, P1, P2, Q;
         cv::Mat essential_matrix = camParams.right_camera_matrix.t() * fundamental_matrix * camParams.left_camera_matrix;
-        // TODO: the calculated translation matrix has large deviation from the groundtruth one.
         cv::Mat U, S, Vt;
         cv::SVDecomp(essential_matrix, S, U, Vt, cv::SVD::FULL_UV);
         cv::Mat W = (cv::Mat_<double>(3, 3) << 0, -1, 0, 1, 0, 0, 0, 0, 1);
@@ -322,6 +281,21 @@ void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoi
 		    << camParams.right_to_left_R << std::endl;
 	  std::cout << "real translation matrix: " << camParams.right_to_left_T << std::endl;
 	}
+	cv::Mat E, R, t;
+        E = camParams.right_camera_matrix.t() * fundamental_matrix * camParams.left_camera_matrix;
+        cv::recoverPose(E, points1, points2, R, t, camParams.fX, cv::Point2d(camParams.cX, camParams.cY), mask);
+
+        double rot_mse = euler_mse(camParams.left_to_right_R, R);
+        double trans_mse = cv::norm(camParams.left_to_right_T, t, cv::NORM_L2);
+	average_rotation_error.push_back(rot_mse);
+	average_translation_error.push_back(trans_mse);
+
+        // RIP calculated translation vector, sorry you're terrible
+        if (trans_mse > 0.2)
+        { 
+            R = camParams.left_to_right_R;
+            t = camParams.left_to_right_T;
+        }
         // // stereoRectify(camParams.left_camera_matrix, camParams.left_distortion_coeffs, camParams.right_camera_matrix, camParams.right_distortion_coeffs, img1.size(), rotation_matrix, translation_matrix, R1, R2, P1, P2, Q);
         stereoRectify(camParams.left_camera_matrix, camParams.left_distortion_coeffs, camParams.right_camera_matrix, camParams.right_distortion_coeffs, img1.size(), camParams.left_to_right_R, camParams.left_to_right_T, R1, R2, P1, P2, Q);
 	Q_matrix = Q;
@@ -417,8 +391,6 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp)
     wls_filter->setLambda(lambda);
     wls_filter->setSigmaColor(sigma);
     wls_filter->filter(left_disp, left, disp, right_disp);
-    // disp.convertTo(disp, CV_16U);
-    // disp.convertTo(disp, CV_64F, 1.0 / 16.0);
     if (DEBUG >= 2)
         std::cout << "Disparity map: " << disp << std::endl;
     return;
@@ -506,7 +478,7 @@ void compute_disparity_map_modified(cv::Mat left, cv::Mat right, cv::Mat &disp, 
     }
     double min_z, max_z;
     cv::minMaxLoc(disp, &min_z, &max_z);
-    std::cout << "minimum disparity: " << min_z << std::endl << "maximum disparity: " << max_z << std::endl;
+    // std::cout << "minimum disparity: " << min_z << std::endl << "maximum disparity: " << max_z << std::endl;
     return;
 }
 
@@ -553,8 +525,6 @@ void reproject_to_3d(cv::Mat disparityMap, cv::Mat rgb_map, struct cameraParams 
 
 void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams camParams, cv::Mat &depthMap)
 {
-  // TODO: the disparity map are calculated on rectified images, so the depth map should be calculated on rectified images
-  // if use original images, the depth map will be wrong, triangulation should be used to calculate the depth map
     if (USE_GROUNDTRUTH == 1)
     {
         std::string groundtruth_disparity_map_dir = PROJECT_PATH + "Data/kitti" + "/data_scene_flow/training/disp_noc_0/";
@@ -598,11 +568,11 @@ void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams 
 void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct cameraParams camParams, std::string filename)
 {
   if (USE_GROUNDTRUTH == 2){
-    std::string groundtruth_depth_map = PROJECT_PATH + "Data/bricks-rgbd" + "/frame-000755.depth.png";
+    std::string groundtruth_depth_map = PROJECT_PATH + "Data/bricks-rgbd/" + get_file_name(std::stoi(filename), 1);
     cv::Mat depth_image = cv::imread(groundtruth_depth_map, cv::IMREAD_UNCHANGED);
     depth_image.convertTo(depth_image, CV_32FC1, 1.0 / 1000.0);
     
-    std::string color_image_path = PROJECT_PATH + "Data/" + DATASET + "/frame-000755.color.png";
+    std::string color_image_path = PROJECT_PATH + "Data/bricks-rgbd/" + get_file_name(std::stoi(filename), 0);
     cv::Mat color_image = cv::imread(color_image_path, cv::IMREAD_UNCHANGED);
 
     cv::Mat map_x, map_y;
@@ -627,19 +597,22 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
     // cv::remap(color_image, color_aligned, map_x, map_y, cv::INTER_LINEAR);
     depth_aligned.convertTo(depth_aligned, CV_64F);
     // color_aligned.convertTo(color_aligned, CV_64F);
+    compute_depth_performance(depth_map, depth_aligned, average_depth_error);
+    image_names.push_back(filename);
     depth_map = depth_aligned;
     // depth_map = depth_image;
     // rgb_map = color_aligned;
     rgb_map = color_image;
-    std::cout << "rgb map size: " << rgb_map.size() << std::endl;
-    std::cout << "depth map size: " << depth_map.size() << std::endl;
-
+    if(DEBUG){
+      std::cout << "rgb map size: " << rgb_map.size() << std::endl;
+      std::cout << "depth map size: " << depth_map.size() << std::endl;
+    }
     camParams.cX = 647.75;
     camParams.cY = 483.75;
     camParams.fX = 1170.19;
     camParams.fY = 1170.19;
   }
-
+  if(GENERATE_POINTCLOUD){
     int width = depth_map.cols;
     int height = depth_map.rows;
 
@@ -654,7 +627,7 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
         {
             int idx = h * width + w;
             float depth = (float)(depth_map.at<double>(h, w));
-	    // TODO: notice the storage format of cv::Mat, float number must read with float, integer must
+	    // notice the storage format of cv::Mat, float number must read with float, integer must
 	    // be read by integer type, otherwise the value would be 0.
 	    // float depth = (float)(depth_map.at<uint16_t>(h, w));
             if (depth != MINF && depth != 0 && depth < 5000 && depth != -1)
@@ -697,14 +670,16 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
             }
         }
     }
-    std::cout << "max depth: " << max_depth << std::endl;
-    std::cout << "min depth: " << min_depth << std::endl;
-    std::cout << "average depth: " << average_depth / valid_depth_count << std::endl;
-
+    if(DEBUG){
+      std::cout << "max depth: " << max_depth << std::endl;
+      std::cout << "min depth: " << min_depth << std::endl;
+      std::cout << "average depth: " << average_depth / valid_depth_count << std::endl;
+    }
     // write to the off file
     std::stringstream ss;
     ss << PROJECT_PATH << "Output/pointclouds/" << filename << ".off";
     writeMesh(vertices, width, height, ss.str());
+  }
     return;
 }
 
@@ -850,5 +825,4 @@ void print_running_information(){
     std::cout << "Use point to plane distance in icp:    " << flag_to_string(USE_POINT_TO_PLANE) << std::endl;
     std::cout << "Merging model method:                  " << MERGE_METHOD << std::endl;
   }
-  std::cout << "Compute dense matching performance:    " << flag_to_string(COMPARE_DENSE_MATCHING) << std::endl; 
 }

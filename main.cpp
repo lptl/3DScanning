@@ -34,13 +34,15 @@ void process_pair_images(std::string filename1, std::string filename2, struct ca
 
     if(DEBUG)
       std::cout << "Estimating fundamental matrix..." << std::endl;
-    cv::Mat fundamental_matrix;
-    find_fundamental_matrix(result1.keypoints, result2.keypoints, good_matches, fundamental_matrix);
+    cv::Mat fundamental_matrix, mask;
+    std::vector<cv::Point2f> points1, points2;
+    if(find_fundamental_matrix(result1.keypoints, result2.keypoints, mask, good_matches, fundamental_matrix, points1, points2) < 0)
+      return;
 
     if(DEBUG)
       std::cout << "Rectifying images..." << std::endl;
     cv::Mat left_rectified, right_rectified;
-    rectify_images(left, right, result1.keypoints, result2.keypoints, good_matches, fundamental_matrix, camParams, left_rectified, right_rectified);
+    rectify_images(left, right, result1.keypoints, result2.keypoints, good_matches, fundamental_matrix, camParams, left_rectified, right_rectified, points1, points2, mask);
     imwrite(PROJECT_PATH + "Output/left_rectified/left-" + img1_name, left_rectified);
     imwrite(PROJECT_PATH + "Output/right_rectified/right-" + img2_name, right_rectified);
 
@@ -65,7 +67,7 @@ void process_pair_images(std::string filename1, std::string filename2, struct ca
       reproject_to_3d(disp, left_rectified, camParams);
     }
     else {
-      std::cout << "Without using reproject to 3d" << std::endl;
+      // std::cout << "Without using reproject to 3d" << std::endl;
       if(DEBUG)
 	std::cout << "Computing depth map and generating point cloud..." << std::endl;
       cv::Mat depthMap = cv::Mat::zeros(disp.rows, disp.cols, CV_64F);
@@ -92,6 +94,7 @@ int main()
         }
         else
         {
+	  // int count = 0, maximum = 700;
 	    std::string color_intrinsics = dataset_dir + "/colorIntrinsics.txt";
 	    std::string depth_intrinsics = dataset_dir + "/depthIntrinsics.txt";
             while ((entry = readdir(directory)) != NULL)
@@ -102,13 +105,18 @@ int main()
                 if (filename_type.category != 0)
                     continue;
 		struct cameraParams camParams;
+		// use a specific picture pair
+		// filename_type.number = 65;
 		std::string left_pose = dataset_dir + "/" + get_file_name(filename_type.number, 2);
 		std::string right_pose = dataset_dir + "/" + get_file_name(filename_type.number + 1, 2);
 		// TODO: add baseline calculation of every two images
 		getCameraParamsBricks(color_intrinsics, depth_intrinsics, left_pose, right_pose, &camParams);
-                process_pair_images(dataset_dir + "/" + entry->d_name, dataset_dir + "/" + get_file_name(filename_type.number + 1, filename_type.category), camParams);
+                process_pair_images(dataset_dir + "/" + get_file_name(filename_type.number, filename_type.category), dataset_dir + "/" + get_file_name(filename_type.number + 1, filename_type.category), camParams);
+		// count += 2;
                 if (TEST)
                     break;
+		// if (count >= maximum)
+		//  break;
             }
         }
         closedir(directory);
@@ -128,6 +136,7 @@ int main()
         }
         else
         {
+	  int count = 0, maxium = 100;
             while ((entry = readdir(directory)) != NULL)
             {
                 if (entry->d_name[0] == '.')
@@ -137,20 +146,21 @@ int main()
                 struct cameraParams camParams;
                 getCameraParamsKITTI(calib_file, &camParams);
                 process_pair_images(left_dir + filename, right_dir + filename, camParams);
+		count += 2;
                 if (TEST)
                     break;
+		if (count >= maxium)
+		  break;
             }
         }
         closedir(directory);
     }
     if (RECONSTRUCT)
         merge(MODELS_DIR);
-    if (compare_string(DATASET, "kitti") && COMPARE_DENSE_MATCHING)
-    {
-        std::string disp_dir = PROJECT_PATH + "Output/disparity_map/";
-        std::string groundtruth_disp_dir = dataset_dir + "/data_scene_flow/training/disp_occ_0/";
-        compute_disparity_performance(disp_dir, groundtruth_disp_dir);
-    }
     std::cout << "Stereo Reconstruction Finished" << std::endl;
+    write_vector_to_file("depth_error.txt", average_depth_error);
+    write_vector_to_file("rotation_error.txt", average_rotation_error);
+    write_vector_to_file("translation_error.txt", average_translation_error);
+    // std::cout << image_names[85] << std::endl;
     return 0;
 }

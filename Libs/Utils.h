@@ -140,17 +140,17 @@ void getCameraParamsBricks(std::string color_intrinsics, std::string depth_intri
   right_R = right_extrinsic_matrix(cv::Rect(0, 0, 3, 3));
   right_T= right_extrinsic_matrix(cv::Rect(3, 0, 1, 3));
 
-  std::cout << "left_R: " << left_R << std::endl;
-  std::cout << "left_T: " << left_T << std::endl;
-  std::cout << "right_R: " << right_R << std::endl;
-  std::cout << "right_T: " << right_T << std::endl;
+  // std::cout << "left_R: " << left_R << std::endl;
+  // std::cout << "left_T: " << left_T << std::endl;
+  // std::cout << "right_R: " << right_R << std::endl;
+  // std::cout << "right_T: " << right_T << std::endl;
   
   cv::Mat c_left = -left_R.t() * left_T;
   cv::Mat c_right = -right_R.t() * right_T;
-  std::cout << "c_left: " << c_left << std::endl;
-  std::cout << "c_right: " << c_right << std::endl;
+  // std::cout << "c_left: " << c_left << std::endl;
+  // std::cout << "c_right: " << c_right << std::endl;
   camParams->baseline = cv::norm(c_left - c_right);
-  std::cout << "baseline: " << camParams->baseline << std::endl;
+  // std::cout << "baseline: " << camParams->baseline << std::endl;
   
   camParams->left_distortion_coeffs = cv::Mat::zeros(5, 1, CV_32F);
   camParams->right_distortion_coeffs = cv::Mat::zeros(5, 1, CV_32F);
@@ -161,8 +161,8 @@ void getCameraParamsBricks(std::string color_intrinsics, std::string depth_intri
   left_real_extrinsic(cv::Rect(3, 0, 1, 3)) = -left_R.t() * left_T;
   right_real_extrinsic(cv::Rect(0, 0, 3, 3)) = right_R.t();
   right_real_extrinsic(cv::Rect(3, 0, 1, 3)) = -right_R.t() * right_T;
-  std::cout << "left_real_extrinsic: " << left_real_extrinsic << std::endl;
-  std::cout << "right_real_extrinsic: " << right_real_extrinsic << std::endl;
+  // std::cout << "left_real_extrinsic: " << left_real_extrinsic << std::endl;
+  // std::cout << "right_real_extrinsic: " << right_real_extrinsic << std::endl;
 
   camParams->left_camera_extrinsic_reverse = left_extrinsic_matrix;
   camParams->right_camera_extrinsic_reverse = right_extrinsic_matrix;
@@ -304,7 +304,7 @@ void getCameraParamsKITTI(std::string calib_file, struct cameraParams *camParams
     return;
 }
 
-bool writeMesh(Vertex *vertices, unsigned int ImageWidth, unsigned int ImageHeight, const std::string &filename, float edgeThreshold = 0.01f)
+bool writeMesh(Vertex *vertices, unsigned int ImageWidth, unsigned int ImageHeight, const std::string &filename, float edgeThreshold = 0.005f)
 {
   // bricks-rgbd: 0.005f
     unsigned int nVertices = 0;
@@ -381,7 +381,7 @@ bool writeMesh(Vertex *vertices, unsigned int ImageWidth, unsigned int ImageHeig
             outFile << vertex.position.x() << " " << vertex.position.y() << " " << vertex.position.z() << " "
                     << int(vertex.color.x()) << " " << int(vertex.color.y()) << " " << int(vertex.color.z()) << " " << int(vertex.color.w()) << std::endl;
 	}
-    std::cout << "nVertices: " << nVertices << std::endl;
+    // std::cout << "nVertices: " << nVertices << std::endl;
     // Save faces.
     for (Vector3i &faceIndices : FaceId)
     {
@@ -391,4 +391,69 @@ bool writeMesh(Vertex *vertices, unsigned int ImageWidth, unsigned int ImageHeig
     // Close file.
     outFile.close();
     return true;
+}
+
+void compute_depth_performance(cv::Mat depth, cv::Mat groundtruth_depth, std::vector<double>& depth_error){
+  double error = 0.0;
+  int count = 0;
+  for(int i = 0; i < depth.rows; i++){
+    for(int j = 0; j < depth.cols; j++){
+      if(depth.at<double>(i,j) == 0 || std::isnan(depth.at<double>(i,j))) // this if should never be true
+	continue;
+      count += 1;
+      double d = depth.at<double>(i,j);
+      error += std::abs(d - groundtruth_depth.at<double>(i,j));
+    }
+  }
+  std::cout << "Average error: " << error/count << std::endl;
+  depth_error.push_back(error/count);
+  return;
+}
+
+void write_vector_to_file(std::string filename, std::vector<double> vec){
+  std::ofstream myfile;
+  myfile.open(filename);
+  for(int i = 0; i < vec.size(); i++){
+    myfile << vec[i] << " ";
+  }
+  myfile.close();
+  return;
+}
+
+cv::Vec3d rot2euler(cv::Mat& R)
+{
+    double sy = sqrt(R.at<double>(0, 0) * R.at<double>(0, 0) + R.at<double>(1, 0) * R.at<double>(1, 0));
+
+    bool singular = sy < 1e-6;
+
+    double x, y, z;
+    if (!singular)
+    {
+        x = atan2(R.at<double>(2, 1), R.at<double>(2, 2));
+        y = atan2(-R.at<double>(2, 0), sy);
+        z = atan2(R.at<double>(1, 0), R.at<double>(0, 0));
+    }
+    else
+    {
+        x = atan2(-R.at<double>(1, 2), R.at<double>(1, 1));
+        y = atan2(-R.at<double>(2, 0), sy);
+        z = 0;
+    }
+
+    return cv::Vec3d(x, y, z);
+}
+
+double euler_mse(cv::Mat R1, cv::Mat R2)
+{
+    // Convert rotation matrices to Euler angles
+    cv::Vec3f euler1, euler2;
+    euler1 = rot2euler(R1);
+    euler2 = rot2euler(R2);
+
+    // Calculate mean squared error
+    double mse = 0;
+    mse = cv::norm(euler1, euler2, cv::NORM_L2);
+
+    mse /= 3;
+    return mse;
 }

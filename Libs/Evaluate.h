@@ -137,7 +137,7 @@ struct MSEextrinsic matching_method_compare(std::vector<cv::KeyPoint> keypoints1
     // }
 
     cv::Mat fundamental_matrix;
-    find_fundamental_matrix(keypoints1, keypoints2, good_matches, fundamental_matrix);
+    // find_fundamental_matrix(keypoints1, keypoints2, good_matches, fundamental_matrix);
 
     // Using essential matrix to compute rotation and translation matrix
     // cv::Mat essential_matrix = camParams.left_camera_matrix.t() * fundamental_matrix * camParams.right_camera_matrix;
@@ -233,3 +233,4 @@ void compute_disparity_performance(std::string disparity_map_dir, std::string gr
     }
     return;
 }
+
