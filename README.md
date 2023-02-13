@@ -11,6 +11,18 @@ This project proposes a pipeline for comparing different stereo reconstruction m
 The project will implement various stereo-matching algorithms such as StereoSGBM and StereoBM and perform post-filtering to increase the quality of the disparity map. The 3D points will be calculated from the stereo correspondences and disparity values, and then merged into a complete 3D model using ICP or an improved algorithm. The aim of this project is to compare the performance of different stereo reconstruction methods and obtain the optimal solution for 3D modelling.
 ![Pipeline Review](pipeline_neu.png)
 
+### Setting up this project
+Required packages:
+- OpenCV
+- Eigen3
+- FLANN
+- Ceres
+
+Datasets:
+- TUM Intrinsic3D: Features 5 scenes captured in RGB-D using a Structure.io depth sensor and iPad camera. The sensor has 640x480 resolution, the camera 1296x968. It can be downloaded [here](https://vision.in.tum.de/data/datasets/intrinsic3d)
+- Kitti Stereo 2015: A benchmark dataset for evaluating the performance of stereo-based 3D object detection and tracking algorithms which can be downloaded [here](https://www.cvlibs.net/datasets/kitti/eval_scene_flow.php?benchmark=stereo)
+
+
 ## Running the code
 ```
 git clone https://github.com/lptl/3DScanning.git
