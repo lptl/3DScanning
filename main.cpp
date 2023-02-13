@@ -3,9 +3,9 @@
 #include "Libs/Pipeline.h"
 #include "Libs/Evaluate.h"
 
-#define DATASET "kitti"          // kitti, bricks-rgbd
-#define TEST 1                   // 0: no test, 1: test
-#define RECONSTRUCT 0            // 0: no reconstruction, 1: reconstruction
+#define DATASET "bricks-rgbd"          // kitti, bricks-rgbd
+#define TEST 1                  // 0: no test, 1: test
+#define RECONSTRUCT 0           // 0: no reconstruction, 1: reconstruction
 #define COMPARE_DENSE_MATCHING 0 // 0: no comparison, 1: comparison, compare dense matching with groundtruth
 
 void process_pair_images(std::string filename1, std::string filename2, struct cameraParams camParams)
