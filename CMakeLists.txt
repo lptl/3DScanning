@@ -18,7 +18,7 @@ target_include_directories(StereoReconstruction PUBLIC ${freeimage_DIR})
 target_link_libraries(StereoReconstruction PRIVATE Eigen3::Eigen)
 target_link_libraries(StereoReconstruction PRIVATE flann::flann_s flann::flann_cpp_s)
 target_link_libraries(StereoReconstruction PRIVATE ceres Ceres::ceres)
-target_link_libraries(StereoReconstruction PRIVATE opencv_ml tegra_hal opencv_dnn opencv_core)
+target_link_libraries(StereoReconstruction PRIVATE opencv_ml opencv_dnn opencv_core)
 target_link_libraries(StereoReconstruction PRIVATE opencv_imgcodecs opencv_highgui opencv_xfeatures2d opencv_ximgproc)
 target_link_libraries(StereoReconstruction PRIVATE opencv_imgproc opencv_features2d opencv_calib3d opencv_flann)
 

@@ -11,7 +11,7 @@
 
 #include "Utils.h"
 
-#define DESCRIPTOR_METHOD "orb"            // harris, sift, surf, orb, brisk, shi-tomasi, fast
+#define DESCRIPTOR_METHOD "harris"            // harris, sift, surf, orb, brisk, shi-tomasi, fast
 #define DESCRIPTOR_MATCHING_METHOD "flann" // flann, brute_force
 #define FUNDAMENTAL_MATRIX_METHOD "ransac" // ransac, lmeds, 7point, 8point
 #define DENSE_MATCHING_METHOD "sgbm"       // bm, sgbm
@@ -23,7 +23,7 @@
 #define DEBUG 0
 
 std::string MODELS_DIR = "Output/pointclouds/";
-std::string PROJECT_PATH = "/Users/k/Desktop/Courses/3dscanning/3DScanning/";
+std::string PROJECT_PATH = "/Users/Tang/Desktop/3DSMC_project/3DScanning/";
 
 void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct detectResult *result)
 {
@@ -53,10 +53,10 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
                 }
             }
         }
-        // cv::Mat keypoints_on_image;
-        // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
-        // imwrite(PROJECT_PATH + "harris_corner_unlabeled/" + img_name, distance_norm);
-        // https://docs.opencv.org/3.4/d4/d7d/tutorial_harris_detector.html
+        cv::Mat keypoints_on_image;
+        drawKeypoints(img, keypoints, keypoints_on_image, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT);
+        imwrite(PROJECT_PATH + "harris_corner_unlabeled/" + img_name, distance_norm);
+        //https://docs.opencv.org/3.4/d4/d7d/tutorial_harris_detector.html
 
         result->keypoints = keypoints;
         int nfeatures = 0, nOctaveLayers = 3;
@@ -92,9 +92,9 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
         std::vector<cv::KeyPoint> keypoints;
         cv::Mat descriptors;
         surf_detector->detectAndCompute(img, cv::Mat(), keypoints, descriptors);
-        // cv::Mat keypoints_on_image;
-        // drawKeypoints(img, keypoints, keypoints_on_image, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
-        // imwrite(PROJECT_PATH + "surf/" + img_name, keypoints_on_image);
+        cv::Mat keypoints_on_image;
+        drawKeypoints(img, keypoints, keypoints_on_image, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT);
+        imwrite(PROJECT_PATH + "surf/" + img_name, keypoints_on_image);
         // https://docs.opencv.org/3.4/d7/d66/tutorial_feature_detection.html
 
         result->keypoints = keypoints;
@@ -171,12 +171,13 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
             keypoints.push_back(cv::KeyPoint(corners[i].x, corners[i].y, 4.0));
         }
 
-        /*
+        
         cv::Mat image_with_keypoints;
-        drawKeypoints(img, keypoints, image_with_keypoints, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
+        drawKeypoints(img, keypoints, image_with_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT);
+        imwrite(PROJECT_PATH + "Shi-Tomasi/" + img_name, image_with_keypoints);
         imshow("Shi-Tomasi", image_with_keypoints);
-        waitKey();
-        */
+        cv::waitKey();
+        
 
         int nfeatures = 0, nOctaveLayers = 3;
         double contrastThreshold = 0.04, edgeThreshold = 10, sigma = 1.6;
@@ -196,12 +197,13 @@ void detect_keypoints_or_features(std::string img_name, cv::Mat img, struct dete
         std::vector<cv::KeyPoint> keypoints;
         fastDetector->detect(img_gray, keypoints);
 
-        /*
+        
         cv::Mat image_with_keypoints;
-        drawKeypoints(img, keypoints, image_with_keypoints, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
+        drawKeypoints(img, keypoints, image_with_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT);
+        imwrite(PROJECT_PATH + "FAST/" + img_name, image_with_keypoints);
         imshow("FAST", image_with_keypoints);
-        waitKey();
-        */
+        cv::waitKey();
+        
         int nfeatures = 0, nOctaveLayers = 3;
         double contrastThreshold = 0.04, edgeThreshold = 10, sigma = 1.6;
         cv::Ptr<cv::SIFT> siftDetector = cv::SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
