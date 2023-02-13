@@ -42,17 +42,17 @@ Sparse matching
 ![Sparse Matching](resources/sparse.png)
 
 Generate disparity map
-![Generate disparity map](resources/Generate Disparity map.png)
+![Generate disparity map](resources/Generate-Disparity-map.png)
 
 Depth error for TUM
-![Depth error for TUM](resources/Depth error TUM.png)
+![Depth error for TUM](resources/Depth-error-TUM.png)
 
 Depth error for Kitti
-![Depth error for Kitti](resources/Depth error Kitti.png)
+![Depth error for Kitti](resources/Depth-error-Kitti.png)
 
 Generated point cloud  
 TUM
-![3D model TUM](resources/3D model TUM.png)
+![3D model TUM](resources/3D-model-TUM.png)
 
 Kitti
-![3D model Kitti](resources/3D model Kitti.png)
+![3D model Kitti](resources/3Dmodel-Kitti.png)
