@@ -254,9 +254,8 @@ void match_descriptors(cv::Mat descriptors1, cv::Mat descriptors2, std::vector<c
     return;
 }
 
-void find_fundamental_matrix(std::vector<cv::KeyPoint> keypoints1, std::vector<cv::KeyPoint> keypoints2, std::vector<cv::DMatch> correspondences, cv::Mat &fundamental_matrix)
+void find_fundamental_matrix(std::vector<cv::KeyPoint> keypoints1, std::vector<cv::KeyPoint> keypoints2, std::vector<cv::DMatch> correspondences, cv::Mat &fundamental_matrix, cv::Mat& mask, std::vector<cv::Point2f>& points1, std::vector<cv::Point2f>& points2)
 {
-    std::vector<cv::Point2f> points1, points2;
     for (int i = 0; i < correspondences.size(); i++)
     {
         points1.push_back(keypoints1[correspondences[i].queryIdx].pt);
@@ -271,13 +270,13 @@ void find_fundamental_matrix(std::vector<cv::KeyPoint> keypoints1, std::vector<c
     double ransacReprojThreshold = 3.0, confidence = 0.99;
     if (compare_string(FUNDAMENTAL_MATRIX_METHOD, "ransac"))
         // Need 15 points for RANSAC, maybe need to change the condition above
-        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_RANSAC, ransacReprojThreshold, confidence);
+        fundamental_matrix = findFundamentalMat(points1, points2, mask, cv::FM_RANSAC, ransacReprojThreshold, confidence);
     else if (compare_string(FUNDAMENTAL_MATRIX_METHOD, "lmeds"))
-        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_LMEDS, ransacReprojThreshold, confidence);
+        fundamental_matrix = findFundamentalMat(points1, points2, mask, cv::FM_LMEDS, ransacReprojThreshold, confidence);
     else if (compare_string(FUNDAMENTAL_MATRIX_METHOD, "7point"))
-        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_7POINT);
+        fundamental_matrix = findFundamentalMat(points1, points2, mask, cv::FM_7POINT);
     else if (compare_string(FUNDAMENTAL_MATRIX_METHOD, "8point"))
-        fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_8POINT);
+        fundamental_matrix = findFundamentalMat(points1, points2, mask, cv::FM_8POINT);
     else
     {
         std::cout << "Error: No such fundamental matrix method." << std::endl;
@@ -286,108 +285,143 @@ void find_fundamental_matrix(std::vector<cv::KeyPoint> keypoints1, std::vector<c
     return;
 }
 
-void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::KeyPoint> keypoints1, std::vector<cv::KeyPoint> keypoints2, std::vector<cv::DMatch> good_matches, cv::Mat fundamental_matrix, struct cameraParams camParams, cv::Mat &left_rectified, cv::Mat &right_rectified)
+void draw_epipolar_lines(cv::Mat img1, cv::Mat img2, cv::Mat F, std::vector<cv::Point2f> points1, std::vector<cv::Point2f> points2, cv::Mat mask, cv::Mat& result)
 {
+    cv::Mat outImg(img1.rows, img1.cols * 2, CV_8UC3);
+    cv::Rect rect1(0, 0, img1.cols, img1.rows);
+    cv::Rect rect2(img1.cols, 0, img1.cols, img1.rows);
+    img1.copyTo(outImg(rect1));
+    img2.copyTo(outImg(rect2));
 
-    if (!camParams.empty)
+    std::vector<cv::Vec3f> epilines1, epilines2;
+    cv::computeCorrespondEpilines(points1, 1, F, epilines1); //Index starts with 1
+    cv::computeCorrespondEpilines(points2, 2, F, epilines2);
+
+    cv::RNG rng(0);
+    for (int i = 0; i <= points1.size(); i++)
     {
-        cv::Mat R1, R2, P1, P2, Q;
-        cv::Mat essential_matrix = camParams.right_camera_matrix.t() * fundamental_matrix * camParams.left_camera_matrix;
-        // TODO: the calculated translation matrix has large deviation from the groundtruth one.
-        cv::Mat U, S, Vt;
-        cv::SVDecomp(essential_matrix, S, U, Vt, cv::SVD::FULL_UV);
-        cv::Mat W = (cv::Mat_<double>(3, 3) << 0, -1, 0, 1, 0, 0, 0, 0, 1);
-        cv::Mat rotation_matrix = U * W * Vt;  // or U * W.t() * Vt
-        cv::Mat translation_matrix = U.col(2); // or -U.col(2)
-        // std::cout << "calculated rotation matrix: " << std::endl
-        //           << rotation_matrix << std::endl;
-        // std::cout << "calculated translation matrix: " << std::endl
-        //           << translation_matrix << std::endl;
-        // std::cout << "real rotation matrix: " << std::endl
-        //           << camParams.right_to_left_R << std::endl;
-        // std::cout << "real translation matrix: " << camParams.right_to_left_T << std::endl;
-        stereoRectify(camParams.left_camera_matrix, camParams.left_distortion_coeffs, camParams.right_camera_matrix, camParams.right_distortion_coeffs, img1.size(), camParams.left_to_right_R, camParams.left_to_right_T, R1, R2, P1, P2, Q);
-        cv::Mat rmap[2][2];
-        initUndistortRectifyMap(camParams.left_camera_matrix, camParams.left_distortion_coeffs, R1, P1, img1.size(), CV_16SC2, rmap[0][0], rmap[0][1]);
-        initUndistortRectifyMap(camParams.right_camera_matrix, camParams.right_distortion_coeffs, R2, P2, img1.size(), CV_16SC2, rmap[1][0], rmap[1][1]);
+        if (mask.at<ushort>(i) == 0) { continue; } // not an inlier
 
-        remap(img1, left_rectified, rmap[0][0], rmap[0][1], cv::INTER_LINEAR);
-        remap(img2, right_rectified, rmap[1][0], rmap[1][1], cv::INTER_LINEAR);
-    }
-    else
-    {
-        // using uncalibrated stereo rectification
-        std::vector<cv::Point2f> points1, points2;
-        for (int i = 0; i < good_matches.size(); i++)
-        {
-            points1.push_back(keypoints1[good_matches[i].queryIdx].pt);
-            points2.push_back(keypoints2[good_matches[i].trainIdx].pt);
-        }
-        if (points1.size() != points2.size() || points1.size() < 8)
-        {
-            std::cout << "Error: The number of points is not enough." << std::endl;
-            return;
-        }
+        cv::Scalar color(rng(256), rng(256), rng(256));
 
-        cv::Mat homography1, homography2;
-        double threshold = 5.0;
-        if (!stereoRectifyUncalibrated(points1, points2, fundamental_matrix, img1.size(), homography1, homography2, threshold))
-        {
-            std::cout << "Error: Failed to rectify images." << std::endl;
-            return;
-        }
-        warpPerspective(img1, left_rectified, homography1, img1.size());
-        warpPerspective(img2, right_rectified, homography2, img2.size());
+        cv::line(outImg(rect2),
+            cv::Point(0, -epilines1[i][2] / epilines1[i][1]),
+            cv::Point(img1.cols, -(epilines1[i][2] + epilines1[i][0] * img1.cols) / epilines1[i][1]),
+            color, 3);
+        cv::circle(outImg(rect1), points1[i], 3, color, 5);
+
+        cv::line(outImg(rect1),
+            cv::Point(0, -epilines2[i][2] / epilines2[i][1]),
+            cv::Point(img2.cols, -(epilines2[i][2] + epilines2[i][0] * img2.cols) / epilines2[i][1]),
+            color, 3);
+        cv::circle(outImg(rect2), points2[i], 3, color, 5);
     }
+
+    result = outImg;
     return;
 }
 
-void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp)
+void rectify_images(cv::Mat img1, cv::Mat img2, std::vector<cv::Point2f> points1, std::vector<cv::Point2f> points2, cv::Mat fundamental_matrix, cv::Mat mask, struct cameraParams camParams, cv::Mat &left_rectified, cv::Mat &right_rectified, cv::Rect &roi1, cv::Rect &roi2)
 {
-    cv::Ptr<cv::ximgproc::DisparityWLSFilter> wls_filter;
-    cv::Mat left_gray, right_gray, left_disp, right_disp;
+    if (!camParams.empty)
+    {
+        cv::Mat E, R, t;
+        E = camParams.right_camera_matrix.t() * fundamental_matrix * camParams.left_camera_matrix;
+        cv::recoverPose(E, points1, points2, R, t, camParams.fX, cv::Point2d(camParams.cX, camParams.cY), mask);
+
+        double rot_mse = euler_mse(camParams.left_to_right_R, R);
+        double trans_mse = cv::norm(camParams.left_to_right_T, t, cv::NORM_L2);
+        std::cout << "MSE of Rotation Matrix: " << rot_mse << std::endl;
+        std::cout << "MSE of Translation Matrix: " << trans_mse << std::endl;
+
+        // RIP calculated translation vector, sorry you're terrible
+        if (trans_mse > 0.2)
+        { 
+            R = camParams.left_to_right_R;
+            t = camParams.left_to_right_T;
+        }
+
+        cv::Mat R1, R2, P1, P2, Q;
+        stereoRectify(camParams.left_camera_matrix, camParams.left_distortion_coeffs, camParams.right_camera_matrix, camParams.right_distortion_coeffs, img1.size(), R, t, R1, R2, P1, P2, Q, cv::CALIB_ZERO_DISPARITY, -1, img1.size(), &roi1, &roi2);
+
+        cv::Mat rmap[2][2];
+        cv::initUndistortRectifyMap(camParams.left_camera_matrix, camParams.left_distortion_coeffs, R1, P1, img1.size(), CV_16SC2, rmap[0][0], rmap[0][1]);
+        cv::initUndistortRectifyMap(camParams.right_camera_matrix, camParams.right_distortion_coeffs, R2, P2, img2.size(), CV_16SC2, rmap[1][0], rmap[1][1]);
+
+        cv::remap(img1, left_rectified, rmap[0][0], rmap[0][1], cv::INTER_LINEAR);
+        cv::remap(img2, right_rectified, rmap[1][0], rmap[1][1], cv::INTER_LINEAR);
+    }
+    
+    return;
+}
+
+void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp, cv::Mat &disp_vis, cv::Rect roi1=cv::Rect(), cv::Rect roi2=cv::Rect())
+{
+    cv::Mat left_gray, right_gray;
+    cv::cvtColor(left, left_gray, cv::COLOR_BGR2GRAY);
+    cv::cvtColor(right, right_gray, cv::COLOR_BGR2GRAY);
+    int min_disp = 4, max_disp = 96, wsize = 5;
 
     if (compare_string(DENSE_MATCHING_METHOD, "bm"))
     {
-        cvtColor(left, left_gray, cv::COLOR_BGR2GRAY);
-        cvtColor(right, right_gray, cv::COLOR_BGR2GRAY);
-
-        int max_disp = 160, wsize = 15;
         cv::Ptr<cv::StereoBM> left_matcher = cv::StereoBM::create(max_disp, wsize);
-        cv::Ptr<cv::StereoMatcher> right_matcher = cv::ximgproc::createRightMatcher(left_matcher);
+        left_matcher->setROI1(roi1);
+        left_matcher->setROI2(roi2);
+        left_matcher->setPreFilterCap(31);
 
         if (!USE_POST_FILTERING)
         {
             left_matcher->compute(left_gray, right_gray, disp);
-            return;
         }
         else
         {
+            double lambda = 8000.0, sigma = 1.5;
+            cv::Ptr<cv::ximgproc::DisparityWLSFilter> wls_filter = cv::ximgproc::createDisparityWLSFilter(left_matcher);
+            wls_filter->setLambda(lambda);
+            wls_filter->setSigmaColor(sigma);
+            cv::Ptr<cv::StereoMatcher> right_matcher = cv::ximgproc::createRightMatcher(left_matcher);
+            cv::Mat left_disp, right_disp;
+            
             left_matcher->compute(left_gray, right_gray, left_disp);
             right_matcher->compute(right_gray, left_gray, right_disp);
-            wls_filter = cv::ximgproc::createDisparityWLSFilter(left_matcher);
+            wls_filter->filter(left_disp, left_gray, disp, right_disp);
+            disp.setTo(-16, disp == -32768);
         }
+
+        cv::ximgproc::getDisparityVis(disp, disp_vis);
+        cv::applyColorMap(disp_vis, disp_vis, cv::COLORMAP_INFERNO);
+        disp.convertTo(disp, CV_32F, 1.0f / 16.0f);
     }
     else if (compare_string(DENSE_MATCHING_METHOD, "sgbm"))
     {
-        int min_disp = 40, max_disp = 80, wsize = 12;
         cv::Ptr<cv::StereoSGBM> left_matcher = cv::StereoSGBM::create(min_disp, max_disp, wsize);
         left_matcher->setP1(24 * wsize * wsize);
         left_matcher->setP2(96 * wsize * wsize);
-        left_matcher->setMode(cv::StereoSGBM::MODE_SGBM_3WAY);
-        cv::Ptr<cv::StereoMatcher> right_matcher = cv::ximgproc::createRightMatcher(left_matcher);
+        left_matcher->setPreFilterCap(63);
+        left_matcher->setMode(cv::StereoSGBM::MODE_HH);
 
         if (!USE_POST_FILTERING)
         {
             left_matcher->compute(left, right, disp);
-            return;
         }
         else
         {
+            double lambda = 8000.0, sigma = 1.5;
+            cv::Ptr<cv::ximgproc::DisparityWLSFilter> wls_filter = cv::ximgproc::createDisparityWLSFilter(left_matcher);
+            wls_filter->setLambda(lambda);
+            wls_filter->setSigmaColor(sigma);
+            cv::Ptr<cv::StereoMatcher> right_matcher = cv::ximgproc::createRightMatcher(left_matcher);
+            cv::Mat left_disp, right_disp;
+            
             left_matcher->compute(left, right, left_disp);
             right_matcher->compute(right, left, right_disp);
-            wls_filter = cv::ximgproc::createDisparityWLSFilter(left_matcher);
+            wls_filter->filter(left_disp, left_gray, disp, right_disp);
+            disp.setTo(-16, disp == -32768);
         }
+
+        cv::ximgproc::getDisparityVis(disp, disp_vis);
+        cv::applyColorMap(disp_vis, disp_vis, cv::COLORMAP_INFERNO);
+        disp.convertTo(disp, CV_32F, 1.0f / 16.0f);
     }
     else
     {
@@ -395,10 +429,9 @@ void compute_disparity_map(cv::Mat left, cv::Mat right, cv::Mat &disp)
         return;
     }
 
-    double lambda = 8000.0, sigma = 1.5;
-    wls_filter->setLambda(lambda);
-    wls_filter->setSigmaColor(sigma);
-    wls_filter->filter(left_disp, left, disp, right_disp);
+    //double min_z, max_z;
+    //cv::minMaxLoc(disp, &min_z, &max_z);
+    //std::cout << min_z << std::endl << max_z << std::endl;
 
     return;
 }
@@ -407,19 +440,22 @@ void get_depth_map_from_disparity_map(cv::Mat disparityMap, struct cameraParams 
 {
     int width = disparityMap.cols;
     int height = disparityMap.rows;
-    depthMap = cv::Mat(height, width, CV_64F);
+    depthMap = cv::Mat(height, width, CV_32F);
 
     for (int h = 0; h < height; h++)
     {
         for (int w = 0; w < width; w++)
         {
-            int disparity = disparityMap.at<int>(h, w);
-            if (disparity == 0)
-                depthMap.at<double>(h, w) = 0;
-            else
-                depthMap.at<double>(h, w) = camParams.fX * camParams.baseline / disparity;
+            float disparity = disparityMap.at<float>(h, w);
+            if (disparity == -1) {
+                depthMap.at<float>(h, w) = 0;
+            }
+            else {
+                depthMap.at<float>(h, w) = 100.0f * camParams.fX * camParams.baseline / disparity;
+            }
         }
     }
+
     return;
 }
 
@@ -430,24 +466,27 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
     int height = depth_map.rows;
 
     Vertex* vertices = new Vertex[width * height];
+
+    std::cout << "Total: " << height * width << std::endl;
+    int count = 0;
+
     for (int h = 0; h < height; h++)
     {
         for (int w = 0; w < width; w++)
         {
             int idx = h * width + w;
-            // float depth = *(depthMap + idx);
-            float depth = (float)(depth_map.at<short>(h, w));
-            depth = depth;
-            if (depth != MINF && depth != 0 && depth < 100 && depth != -1)
-            { // range filter: (0, 1 meter)
+            float depth = depth_map.at<float>(h, w);
+
+            if (depth != 0)
+            {
                 float X_c = (float(w) - camParams.cX) * depth / camParams.fX;
                 float Y_c = (float(h) - camParams.cY) * depth / camParams.fY;
                 Vector4f P_c = Vector4f(X_c, Y_c, depth, 1);
 
                 vertices[idx].position = P_c;
-                unsigned char R = rgb_map.at<cv::Vec3b>(h, w)[2];
-                unsigned char G = rgb_map.at<cv::Vec3b>(h, w)[1];
-                unsigned char B = rgb_map.at<cv::Vec3b>(h, w)[0];
+                unsigned char R = rgb_map.at<cv::Vec3b>(h, w)[2]; // B
+                unsigned char G = rgb_map.at<cv::Vec3b>(h, w)[1]; // G
+                unsigned char B = rgb_map.at<cv::Vec3b>(h, w)[0]; // R
                 unsigned char A = 255;
                 vertices[idx].color = Vector4uc(R, G, B, A);
             }
@@ -455,13 +494,16 @@ void get_point_cloud_from_depth_map(cv::Mat depth_map, cv::Mat rgb_map, struct c
             {
                 vertices[idx].position = Vector4f(MINF, MINF, MINF, MINF);
                 vertices[idx].color = Vector4uc(0, 0, 0, 0);
+                count++;
             }
         }
     }
 
+    std::cout << "Invalid: " << count << std::endl;
+
     // write to the off file
     std::stringstream ss;
-    ss << PROJECT_PATH << "Output/pointclouds/" << filename << ".off";
+    ss << filename;
     writeMesh(vertices, width, height, ss.str());
     return;
 }

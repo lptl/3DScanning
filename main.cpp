@@ -3,74 +3,97 @@
 #include "Libs/Pipeline.h"
 #include "Libs/Evaluate.h"
 
-#define DATASET "kitti"          // kitti, bricks-rgbd
-#define TEST 1                   // 0: no test, 1: test
-#define RECONSTRUCT 1            // 0: no reconstruction, 1: reconstruction
-#define COMPARE_DENSE_MATCHING 0 // 0: no comparison, 1: comparison, compare dense matching with groundtruth
-#define COMPARE_SPARSE_MATCHING 0 // 0: no comparison, 1: comparison, compare calculated matrix from sparse matching with Camera.parameters
+#define DATASET "kitti"             // kitti, bricks-rgbd
+#define TEST 0                      // 0: no test, 1: test
+#define RECTIFY 0                   // 0: use groundtruth, 1: rectify based on sparse matching
+#define RECONSTRUCT 0               // 0: no reconstruction, 1: reconstruction
 
 void process_pair_images(std::string filename1, std::string filename2, struct cameraParams camParams)
 {
+    //std::cout << filename1 << std::endl << filename2 << std::endl;
     cv::Mat left = imread(filename1, cv::IMREAD_COLOR);
     cv::Mat right = imread(filename2, cv::IMREAD_COLOR);
-    // TODO: do image distortion calibrration if needed
+
     if (left.empty() || right.empty())
     {
         std::cout << "Error: Image not found or failed to open image." << std::endl;
         return;
     }
 
-    std::string img1_name = filename1.substr(filename1.find_last_of("/\\") + 1);
-    std::string img2_name = filename2.substr(filename2.find_last_of("/\\") + 1);
+    std::string img1_name = filename1.substr(filename1.find_last_of("/") + 1);
+    std::string img2_name = filename2.substr(filename2.find_last_of("/") + 1);
+
+    cv::Mat left_rectified, right_rectified;
+    cv::Rect roi1 = cv::Rect(), roi2 = cv::Rect();
 
     std::cout << "Processing " << filename1 << " and " << filename2 << std::endl;
 
-    std::cout << "Detecting keypoints and computing descriptors" << std::endl;
-    struct detectResult result1, result2;
-    detect_keypoints_or_features(img1_name, left, &result1);
-    detect_keypoints_or_features(img2_name, right, &result2);
-
-    std::cout << "Matching descriptors" << std::endl;
-    std::vector<cv::DMatch> good_matches;
-    match_descriptors(result1.descriptors, result2.descriptors, good_matches);
-    cv::Mat img_matches;
-    drawMatches(left, result1.keypoints, right, result2.keypoints, good_matches, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1), std::vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
-    imwrite(PROJECT_PATH + "Output/descriptor_match/" + std::to_string(result1.filetype.number) + "-" + std::to_string(result2.filetype.number) + ".png", img_matches);
-
-    std::cout << "Computing fundamental matrix" << std::endl;
-    cv::Mat fundamental_matrix;
-    find_fundamental_matrix(result1.keypoints, result2.keypoints, good_matches, fundamental_matrix);
-
-    if (COMPARE_SPARSE_MATCHING)
+    if (RECTIFY)
     {
-        matching_method_compare(result1.keypoints, result2.keypoints, good_matches, camParams);
-    }
+        cv::Mat left_undistorted, right_undistorted;
+        cv::undistort(left, left_undistorted, camParams.left_camera_matrix, camParams.left_distortion_coeffs);
+        cv::undistort(right, right_undistorted, camParams.right_camera_matrix, camParams.right_distortion_coeffs);
 
-    std::cout << "Rectifying images" << std::endl;
-    cv::Mat left_rectified, right_rectified;
-    rectify_images(left, right, result1.keypoints, result2.keypoints, good_matches, fundamental_matrix, camParams, left_rectified, right_rectified);
-    imwrite(PROJECT_PATH + "Output/left_rectified/" + img1_name, left_rectified);
-    imwrite(PROJECT_PATH + "Output/right_rectified/" + img2_name, right_rectified);
+        std::cout << "Detecting keypoints and computing descriptors" << std::endl;
+        struct detectResult result1, result2;
+        detect_keypoints_or_features(img1_name, left_undistorted, &result1);
+        detect_keypoints_or_features(img2_name, right_undistorted, &result2);
+
+        std::cout << "Matching descriptors" << std::endl;
+        std::vector<cv::DMatch> good_matches;
+        match_descriptors(result1.descriptors, result2.descriptors, good_matches);
+        cv::Mat img_matches;
+        cv::drawMatches(left_undistorted, result1.keypoints, right_undistorted, result2.keypoints, good_matches, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1), std::vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
+        cv::imwrite(PROJECT_PATH + "Output/descriptor_match/" + std::to_string(result1.filetype.number) + "-" + std::to_string(result2.filetype.number) + ".png", img_matches);
+
+        std::cout << "Computing fundamental matrix" << std::endl;
+        cv::Mat fundamental_matrix, mask;
+        std::vector<cv::Point2f> points1, points2;
+        find_fundamental_matrix(result1.keypoints, result2.keypoints, good_matches, fundamental_matrix, mask, points1, points2);
+        cv::Mat img_lines;
+        draw_epipolar_lines(left_undistorted, right_undistorted, fundamental_matrix, points1, points2, mask, img_lines);
+        cv::imwrite(PROJECT_PATH + "Output/epipolar_lines/" + std::to_string(result1.filetype.number) + "-" + std::to_string(result2.filetype.number) + ".png", img_lines);
+
+        std::cout << "Rectifying images" << std::endl;
+        rectify_images(left, right, points1, points2, fundamental_matrix, mask, camParams, left_rectified, right_rectified, roi1, roi2);
+        cv::imwrite(PROJECT_PATH + "Output/left_rectified/" + img1_name, left_rectified);
+        cv::imwrite(PROJECT_PATH + "Output/right_rectified/" + img2_name, right_rectified);
+    }
+    else
+    {
+        left.copyTo(left_rectified);
+        right.copyTo(right_rectified);
+    }
+    
+    std::string img1_num = img1_name.substr(0, img1_name.find_last_of("."));
+    // Test only the 10th image (for which we have ground truth dis
+    if (std::stoi(img1_num) != 10)
+    {
+        return;
+    }
 
     std::cout << "Computing disparity map" << std::endl;
     cv::Mat disp, disp_vis;
-    compute_disparity_map(left_rectified, right_rectified, disp);
-    cv::ximgproc::getDisparityVis(disp, disp_vis);
-    imwrite(PROJECT_PATH + "Output/disparity_map/" + img1_name, disp_vis);
+    compute_disparity_map(left_rectified, right_rectified, disp, disp_vis, roi1, roi2);
+    cv::imwrite(PROJECT_PATH + "Output/disparity_map/" + img1_name, disp_vis);
+    
+
+    if (compare_string(DATASET, "kitti") && std::stoi(img1_num) == 10)
+    {
+        std::string dataset_dir = filename1.substr(0, filename1.find("kitti") + 5);
+        cv::Mat gt_disp = imread(dataset_dir + "/disparity_map/" + img1_name, cv::IMREAD_UNCHANGED);
+        gt_disp.convertTo(gt_disp, CV_32F, 1.0f / 256.0f);
+        gt_disp.setTo(-1, gt_disp == 0);
+
+        cv::Mat err_img;
+        disp_error(gt_disp, disp, err_img);
+        cv::imwrite(PROJECT_PATH + "Output/disparity_map/" + img1_num + "_error.png", err_img);
+    }
 
     std::cout << "Generating point cloud" << std::endl;
     cv::Mat depthMap;
     get_depth_map_from_disparity_map(disp, camParams, depthMap);
-    get_point_cloud_from_depth_map(depthMap, left_rectified, camParams, std::to_string(result1.filetype.number));
-
-    // Free up memory
-    left.release();
-    right.release();
-    img_matches.release();
-    fundamental_matrix.release();
-    disp.release();
-    disp_vis.release();
-    depthMap.release();
+    get_point_cloud_from_depth_map(depthMap, left, camParams, PROJECT_PATH + "Output/pointclouds/" + img1_num + ".off");
 
     std::cout << "Finished processing " << filename1 << " and " << filename2 << std::endl
               << std::endl;
@@ -91,7 +114,7 @@ int main()
     std::cout << "Use point to plane distance in icp:    " << USE_POINT_TO_PLANE << std::endl;
     std::cout << "Reconstruct the whole 3D model:        " << RECONSTRUCT << std::endl;
     std::cout << "Merging method:                        " << MERGE_METHOD << std::endl;
-    std::cout << "Compute dense matching performance:    " << COMPARE_DENSE_MATCHING << std::endl;
+    
     std::string dataset_dir = PROJECT_PATH + "Data/" + DATASET;
     if (compare_string(DATASET, "bricks-rgbd"))
     {
@@ -121,42 +144,49 @@ int main()
     }
     else if (compare_string(DATASET, "kitti"))
     {
-        std::string left_dir = dataset_dir + "/data_scene_flow/training/image_2/";
-        std::string right_dir = dataset_dir + "/data_scene_flow/training/image_3/";
-        std::string calib_dir = dataset_dir + "/data_scene_flow_calib/training/calib_cam_to_cam/";
-        std::string disp_dir = dataset_dir + "/data_scene_flow/training/disp_occ_0/";
-        DIR *directory = opendir(left_dir.c_str());
-        struct dirent *entry;
-        if (directory == NULL)
+        std::string calib_file = dataset_dir + "/calib_cam_to_cam.txt";
+        std::string left_dir, right_dir;
+
+        if (RECTIFY)
         {
-            std::cout << "Error in main.cpp main(): Directory not found or failed to open directory." << left_dir << std::endl;
+            left_dir = dataset_dir + "/unrectified/image_02/data/";
+            right_dir = dataset_dir + "/unrectified/image_03/data/";
+        }
+        else
+        {
+            left_dir = dataset_dir + "/rectified/image_02/data/";
+            right_dir = dataset_dir + "/rectified/image_03/data/";
+        }
+        
+        DIR *left_directory = opendir(left_dir.c_str());
+        DIR* right_directory = opendir(right_dir.c_str());
+        struct dirent *entry_left, *entry_right;
+        if (left_directory == NULL || right_directory == NULL)
+        {
+            std::cout << "Error in main.cpp main(): Directory not found or failed to open directory." << left_dir << std::endl << right_dir << std::endl;
             return -1;
         }
         else
         {
-            while ((entry = readdir(directory)) != NULL)
+            struct cameraParams camParams;
+            getCameraParamsKITTI(calib_file, &camParams);
+
+            while ((entry_left = readdir(left_directory)) != NULL && (entry_right = readdir(right_directory)) != NULL)
             {
-                if (entry->d_name[0] == '.')
+                if (entry_left->d_name[0] == '.')
                     continue;
-                std::string filename = entry->d_name;
-                std::string calib_file = calib_dir + filename.substr(filename.find_last_of("/") + 1, filename.find("_")) + ".txt";
-                struct cameraParams camParams;
-                getCameraParamsKITTI(calib_file, &camParams);
-                process_pair_images(left_dir + filename, right_dir + filename, camParams);
+                
+                process_pair_images(left_dir + entry_left->d_name, right_dir + entry_right->d_name, camParams);
                 if (TEST)
                     break;
             }
         }
-        closedir(directory);
+        closedir(left_directory);
+        closedir(right_directory);
     }
     if (RECONSTRUCT)
         merge(MODELS_DIR);
-    if (COMPARE_DENSE_MATCHING)
-    {
-        std::string disp_dir = PROJECT_PATH + "Output/disparity_map/";
-        std::string groundtruth_disp_dir = dataset_dir + "/data_scene_flow/training/disp_occ_0/";
-        compute_disparity_performance(disp_dir, groundtruth_disp_dir);
-    }
+
     std::cout << "Stereo Reconstruction Finished" << std::endl;
     return 0;
 }
